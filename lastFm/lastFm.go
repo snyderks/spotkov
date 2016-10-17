@@ -45,11 +45,16 @@ type album struct {
 	Title string `json:"#text"`
 }
 
+type Song struct {
+	Artist string
+	Title string
+}
+
 var pagesWg sync.WaitGroup
 
 const baseLastURI = "http://ws.audioscrobbler.com/2.0/"
 
-func ReadLastFMSongs(user_id string) []string {
+func ReadLastFMSongs(user_id string) []Song {
 	// try to do things with last.fm
 	method := "user.getrecenttracks"
 	api_key, key_success := os.LookupEnv("LASTFM_KEY")
@@ -78,39 +83,39 @@ func ReadLastFMSongs(user_id string) []string {
 	songs := SongsPage{}
 	err = json.Unmarshal(songsJSON, &songs)
 
-	pageTitles := make([]string, 50)
+	pageSongs := make([]Song, 50)
 
 	for _, track := range songs.RecentTracks.Tracks {
-		pageTitles = append(pageTitles, track.Title)
+		pageSongs = append(pageSongs, Song{track.Artist.Title, track.Title})
 	}
 
 	max_page, _ := strconv.Atoi(songs.RecentTracks.Metadata.TotalPages)
 
-	titles := make([][]string, max_page)
+	songPages := make([][]Song, max_page)
 
-	titles[0] = pageTitles
+	songPages[0] = pageSongs
 
 	for i := 2; i <= max_page; i++ {
 		pagesWg.Add(1)
-		go getLastFMPagesAsync(last_url, i, max_page, titles)
+		go getLastFMPagesAsync(last_url, i, max_page, songPages)
 	}
 
 	pagesWg.Wait()
 
-	titlesConcat := make([]string, 0)
+	titlesConcat := make([]Song, 0)
 
 	for i := 1; i < max_page; i++ {
-		titlesConcat = append(titlesConcat, titles[i]...)
+		titlesConcat = append(titlesConcat, songPages[i]...)
 	}
 
-	fmt.Println("I got", len(titles), "pages total.")
+	fmt.Println("I got", len(songPages), "pages total.")
 	fmt.Println("Expected", max_page, "pages.")
 
 	return titlesConcat
 
 }
 
-func getLastFMPagesAsync(url string, page int, max_page int, allTitles [][]string) {
+func getLastFMPagesAsync(url string, page int, max_page int, allTitles [][]Song) {
 	defer pagesWg.Done()
 	pageStr := strconv.Itoa(page)
 	resp, err := http.Get(url + "&page=" + pageStr)
@@ -128,9 +133,9 @@ func getLastFMPagesAsync(url string, page int, max_page int, allTitles [][]strin
 		fmt.Println(err)
 	}
 	tracksRaw := songs.RecentTracks.Tracks
-	titles := make([]string, 0)
+	titles := make([]Song, 0)
 	for _, track := range tracksRaw {
-		titles = append(titles, track.Title)
+		titles = append(titles, Song{track.Artist.Title, track.Title})
 	}
 	index, _ := strconv.Atoi(songs.RecentTracks.Metadata.Page)
 	allTitles[index-1] = titles

@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"os/exec"
 	"runtime"
+	"flag"
 
-	"github.com/snyderks/spotkov/lastFm"
 	"github.com/snyderks/spotkov/markov"
+	"github.com/snyderks/spotkov/lastFm"
+	"github.com/snyderks/spotkov/spotifyPlaylistGenerator"
 
 	"github.com/zmb3/spotify"
 )
@@ -18,12 +20,28 @@ import (
 const redirectURI = "http://localhost:8080/callback"
 
 var (
-	auth  = spotify.NewAuthenticator(redirectURI, spotify.ScopeUserReadPrivate)
+	scopes = []string {spotify.ScopeUserReadPrivate,
+										 spotify.ScopePlaylistReadPrivate,
+										 spotify.ScopePlaylistModifyPrivate,
+										 spotify.ScopePlaylistModifyPublic}
+	auth  = spotify.NewAuthenticator(redirectURI, scopes...)
 	ch    = make(chan *spotify.Client)
 	state = "abc123"
 )
 
+type flags struct {
+	lastFmUserId string
+	publicPlaylist bool
+	playlistLength int
+	startingSong string
+	startingArtist string
+}
+
 func main() {
+	_, keep_going := handleArgs()
+	if keep_going == false {
+		return
+	}
 	// start a local HTTP server
 	http.HandleFunc("/callback", completeAuth) // paths ending in /callback call this!
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -51,15 +69,20 @@ func main() {
 	}
 	fmt.Println("You are logged in as:", user.ID)
 
-	user_id := "snyderks"
+	lastFMUserId := "snyderks"
 
-	titles := lastFm.ReadLastFMSongs(user_id)
+	titles := lastFm.ReadLastFMSongs(lastFMUserId)
 
 	if len(titles) > 0 {
 		fmt.Println("Success! I got", len(titles), "titles.")
 	}
 
-	markov.BuildChain(titles)
+	chain := markov.BuildChain(titles)
+	fmt.Println("Generating song list")
+	list := markov.GenerateSongList(20, lastFm.Song{Artist: "Meg Myers", Title: "Lemon Eyes"}, chain)
+	fmt.Println("Got song list")
+	spotifyPlaylistGenerator.CreatePlaylist(list, client, user.ID)
+	fmt.Println("Came back from creating the playlist")
 }
 
 // internal startup functions
@@ -98,4 +121,31 @@ func open(url string) error {
 	}
 	args = append(args, url)
 	return exec.Command(cmd, args...).Start()
+}
+// processes the arguments passed and returns whether execution should continue.
+func handleArgs() (flags, bool) {
+	help := flag.Bool("help", false, "Description of the program and arguments")
+	lastFm := flag.String("lastFm", "", "Your Last.FM User ID")
+	publicPlaylist := flag.Bool("public", false, "Make the generated playlist public")
+	playlistLength := flag.Int("length", 20, "Length of the generated playlist")
+	songTitle := flag.String("title", "", "Title of the song to start with")
+	songArtist := flag.String("artist", "", "Artist of the song to start with")
+
+	flag.Parse()
+
+	if *help == true {
+		fmt.Println("Spotkov is a Markov chain generator that uses your scrobbling history on Last.FM to find a playlist of songs that you've listened to and might like together and adds it to your Spotify profile.")
+		fmt.Println("Use it like this:")
+		fmt.Println("./spotkov -lastFm=\"your_Last.FM_user_id\"")
+		fmt.Println("./spotkov -lastFm=\"your_Last.FM_user_id\" -public")
+		fmt.Println("./spotkov -lastFm=\"your_Last.FM_user_id\" -length=45 -title=\"Madness\" -artist=\"Muse\"")
+		return flags{}, false
+	}
+	return flags {
+		lastFmUserId: *lastFm,
+		publicPlaylist: *publicPlaylist,
+		playlistLength: *playlistLength,
+		startingSong: *songTitle,
+		startingArtist: *songArtist }, true
+	
 }
