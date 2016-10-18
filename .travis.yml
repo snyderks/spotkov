@@ -2,3 +2,4 @@ language: go
 
 install:
   - go get github.com/zmb3/spotify
+  - go get github.com/atotto/clipboard
