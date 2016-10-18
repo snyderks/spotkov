@@ -3,9 +3,6 @@
 package markov
 
 import (
-	"bufio"
-	"os"
-	"strconv"
 	"sort"
 	"math/rand"
 	"time"
@@ -27,7 +24,7 @@ type Suffix struct {
 
 type CDF [][2]int
 
-const repeatDiscount = 0.2
+const repeatDiscount = 0.05
 /* the percentage of the Chance to discount
  * the suffix to by if it's a repeat of the prefix
  */
@@ -62,7 +59,7 @@ func BuildChain(songs []lastFm.Song) map[string]Suffixes {
 
 	}
 	// Make byte array
-	fo, err := os.Create("output.txt")
+	/*fo, err := os.Create("output.txt")
 	if err != nil {
 		panic(err)
 	}
@@ -82,7 +79,7 @@ func BuildChain(songs []lastFm.Song) map[string]Suffixes {
 		if err != nil {
 			panic(err)
 		}
-	}
+	}*/
 	return chain
 }
 
@@ -95,7 +92,6 @@ func GenerateSongList(length int, startingSong lastFm.Song, chain map[string]Suf
 		if exists == true {
 			if len(chain[currentPrefix].Suffixes) > 1 {
 				suffixes := chain[currentPrefix].Suffixes
-				fmt.Println("Options:", suffixes)
 				cdf := make(CDF, 0, len(suffixes)) // cumulative distribution array with index 0 as the value, 1 as the Suffix index
 				for j, suffix := range suffixes {
 					var freq int
@@ -132,7 +128,6 @@ func GenerateSongList(length int, startingSong lastFm.Song, chain map[string]Suf
 			panic("Couldn't find the prefix") // TODO: fail silently or find another way around not being able to find the prefix
 		}
 	}
-	fmt.Println(list)
 	return list
 }
 

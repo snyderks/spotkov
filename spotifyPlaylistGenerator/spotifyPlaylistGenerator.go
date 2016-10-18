@@ -21,7 +21,6 @@ func CreatePlaylist(songs []lastFm.Song, client *spotify.Client, userId string) 
       if playlist.Name == playlistName {
         playlistId = playlist.ID
         playlistExists = true
-        fmt.Println("Found the playlist")
         break
       }
     }
@@ -30,7 +29,6 @@ func CreatePlaylist(songs []lastFm.Song, client *spotify.Client, userId string) 
       if err != nil {
         panic(err)
       }
-      fmt.Println("Created the playlist")
       playlistId = playlistCreated.SimplePlaylist.ID
     }
   } else {
@@ -44,12 +42,11 @@ func CreatePlaylist(songs []lastFm.Song, client *spotify.Client, userId string) 
       go searchAndAddTrackToList(client, query, tracks, i)
     }
     songsWg.Wait()
-    fmt.Println("Found the tracks")
     err := client.ReplacePlaylistTracks(userId, playlistId, clearFailuresFromList(tracks)...)
     if err != nil {
       panic(err)
     }
-    fmt.Println("Successfully created the playlist!")
+    fmt.Println("Successfully created the playlist under the name", playlistName)
   }
 
 }

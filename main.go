@@ -6,15 +6,17 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os/exec"
-	"runtime"
 	"flag"
+	"strings"
+	"bufio"
+	"os"
 
 	"github.com/snyderks/spotkov/markov"
 	"github.com/snyderks/spotkov/lastFm"
 	"github.com/snyderks/spotkov/spotifyPlaylistGenerator"
 
 	"github.com/zmb3/spotify"
+	"github.com/atotto/clipboard"
 )
 
 const redirectURI = "http://localhost:8080/callback"
@@ -33,24 +35,25 @@ type flags struct {
 	lastFmUserId string
 	publicPlaylist bool
 	playlistLength int
-	startingSong string
-	startingArtist string
+	song string
+	artist string
 }
 
 func main() {
-	_, keep_going := handleArgs()
+	args, keep_going := handleArgs()
 	if keep_going == false {
 		return
 	}
 	// start a local HTTP server
 	http.HandleFunc("/callback", completeAuth) // paths ending in /callback call this!
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	/*http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		log.Println("Got request for:", r.URL.String())
-	})
+	})*/
 	go http.ListenAndServe(":8080", nil)
 
 	url := auth.AuthURL(state)
-	fmt.Println("Please log in to spotify by visiting the following page: ", url)
+	fmt.Println("Please log in to Spotify by visiting the following page\n(copied to your clipboard):\n\n", url)
+	clipboard.WriteAll(url)
 	//fmt.Println("Type yes to open this page in your browser, enter to continue")
 	//var openResp string
 	/*_, err := fmt.Scanf("%s\n", &openResp) // need the reference otherwise a copy is made
@@ -69,20 +72,71 @@ func main() {
 	}
 	fmt.Println("You are logged in as:", user.ID)
 
-	lastFMUserId := "snyderks"
-
-	titles := lastFm.ReadLastFMSongs(lastFMUserId)
+	titles := lastFm.ReadLastFMSongs(args.lastFmUserId)
 
 	if len(titles) > 0 {
-		fmt.Println("Success! I got", len(titles), "titles.")
+		fmt.Println("Success! I got", len(titles), "titles from your Last.FM profile.")
+	} else {
+		panic("No titles were returned from Last.FM. Cannot continue.")
 	}
 
 	chain := markov.BuildChain(titles)
-	fmt.Println("Generating song list")
-	list := markov.GenerateSongList(20, lastFm.Song{Artist: "Meg Myers", Title: "Lemon Eyes"}, chain)
-	fmt.Println("Got song list")
+	if args.song == "" && args.artist == "" {
+		reader := bufio.NewReader(os.Stdin)
+		lastSong := titles[0]
+
+		fmt.Println("\nThe last song you played was", lastSong.Title, "by", lastSong.Artist)
+		fmt.Println("Use this as a starting point? (Yes/No) ")
+		resp, _ := reader.ReadString('\n')
+		resp = strings.TrimSpace(resp)
+
+		result, valid := checkYesOrNo(resp)
+
+		for valid == false {
+			fmt.Println("\nInvalid response. Please type yes or no.")
+			resp, _ = reader.ReadString('\n')
+			resp = strings.TrimSpace(resp)
+
+			result, valid = checkYesOrNo(resp)
+		}
+		if result == true {
+			fmt.Println("\nOkay! I'll use that as the initial song.")
+			args.song = lastSong.Title
+			args.artist = lastSong.Artist
+		} else {
+			seedEntered := false
+			for seedEntered == false {
+				fmt.Println("\nI won't use that as the song. Enter a song name and artist to use (separated by new lines)\n")
+				respTitle, _ := reader.ReadString('\n')
+				respTitle = strings.TrimSpace(respTitle)
+				respArtist, _ := reader.ReadString('\n')
+				respArtist = strings.TrimSpace(respArtist)
+
+				fmt.Println("\nIs", respTitle, "by", respArtist, "okay? (Yes/No) ")
+				resp, _ = reader.ReadString('\n')
+				resp = strings.TrimSpace(resp)
+
+				result, valid = checkYesOrNo(resp)
+				for valid == false {
+					fmt.Println("\nInvalid response. Please type yes or no.")
+					resp, _ = reader.ReadString('\n')
+					resp = strings.TrimSpace(resp)
+					result, valid = checkYesOrNo(resp)
+				}
+				if result == true {
+					seedEntered = true
+					args.artist = respArtist
+					args.song = respTitle
+				}
+			}
+		}
+	}
+	length := 20
+	if args.playlistLength > 0 {
+		length = args.playlistLength
+	}
+	list := markov.GenerateSongList(length, lastFm.Song{Artist: args.artist, Title: args.song}, chain)
 	spotifyPlaylistGenerator.CreatePlaylist(list, client, user.ID)
-	fmt.Println("Came back from creating the playlist")
 }
 
 // internal startup functions
@@ -104,24 +158,6 @@ func completeAuth(w http.ResponseWriter, r *http.Request) {
 	ch <- &client // throw the channel a *reference* to the client (it wants a pointer)
 }
 
-// open opens the specified URL in the default browser of the user.
-// from http://stackoverflow.com/questions/39320371/how-start-web-server-to-open-page-in-browser-in-golang
-func open(url string) error {
-	var cmd string
-	var args []string
-
-	switch runtime.GOOS {
-	case "windows":
-		cmd = "cmd"
-		args = []string{"/c", "start"}
-	case "darwin":
-		cmd = "open"
-	default: // "linux", "freebsd", "openbsd", "netbsd"
-		cmd = "xdg-open"
-	}
-	args = append(args, url)
-	return exec.Command(cmd, args...).Start()
-}
 // processes the arguments passed and returns whether execution should continue.
 func handleArgs() (flags, bool) {
 	help := flag.Bool("help", false, "Description of the program and arguments")
@@ -133,19 +169,45 @@ func handleArgs() (flags, bool) {
 
 	flag.Parse()
 
+	allFlags := flags{}
+
 	if *help == true {
 		fmt.Println("Spotkov is a Markov chain generator that uses your scrobbling history on Last.FM to find a playlist of songs that you've listened to and might like together and adds it to your Spotify profile.")
 		fmt.Println("Use it like this:")
-		fmt.Println("./spotkov -lastFm=\"your_Last.FM_user_id\"")
-		fmt.Println("./spotkov -lastFm=\"your_Last.FM_user_id\" -public")
-		fmt.Println("./spotkov -lastFm=\"your_Last.FM_user_id\" -length=45 -title=\"Madness\" -artist=\"Muse\"")
+		fmt.Println("./spotkov -lastFm=your_Last.FM_user_id")
+		fmt.Println("./spotkov -lastFm=your_Last.FM_user_id -public")
+		fmt.Println("./spotkov -lastFm=your_Last.FM_user_id -length=45 -title=Madness -artist=Muse")
 		return flags{}, false
 	}
-	return flags {
-		lastFmUserId: *lastFm,
-		publicPlaylist: *publicPlaylist,
-		playlistLength: *playlistLength,
-		startingSong: *songTitle,
-		startingArtist: *songArtist }, true
+
+	if *lastFm == "" {
+		var userId string
+		fmt.Printf("Please enter your Last.FM user ID: ")
+		_, err := fmt.Scanf("%s\n", &userId)
+		if err != nil {
+			panic(err)
+		}
+		allFlags.lastFmUserId = userId
+
+	} else {
+		allFlags.lastFmUserId = *lastFm
+	}
+	allFlags.publicPlaylist = *publicPlaylist
+	allFlags.playlistLength = *playlistLength
+	allFlags.song = *songTitle
+	allFlags.artist = *songArtist
 	
+	return allFlags, true
+	
+}
+
+func checkYesOrNo(resp string) (result, valid bool) {
+	if strings.EqualFold(resp, "yes") || strings.EqualFold(resp, "y") {
+		return true, true
+
+	} else if strings.EqualFold(resp, "no") || strings.EqualFold(resp, "n") {
+		return false, true
+	} else {
+		return false, false
+	}
 }

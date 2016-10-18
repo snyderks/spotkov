@@ -58,7 +58,6 @@ func ReadLastFMSongs(user_id string) []Song {
 	// try to do things with last.fm
 	method := "user.getrecenttracks"
 	api_key, key_success := os.LookupEnv("LASTFM_KEY")
-	fmt.Println("Key: ", api_key)
 	get_json := true
 	if key_success == false {
 		log.Fatal("couldn't get API key for LastFM from the env vars")
@@ -73,9 +72,8 @@ func ReadLastFMSongs(user_id string) []Song {
 		songsJSON, err = ioutil.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			log.Fatal("couldn't read the body of the last.fm response")
+			log.Fatal("Couldn't read the body of the last.fm response")
 		}
-		fmt.Println("Printed page 1")
 	} else {
 		fmt.Println(err)
 	}
@@ -83,7 +81,7 @@ func ReadLastFMSongs(user_id string) []Song {
 	songs := SongsPage{}
 	err = json.Unmarshal(songsJSON, &songs)
 
-	pageSongs := make([]Song, 50)
+	pageSongs := make([]Song, 0, 50)
 
 	for _, track := range songs.RecentTracks.Tracks {
 		pageSongs = append(pageSongs, Song{track.Artist.Title, track.Title})
@@ -104,12 +102,9 @@ func ReadLastFMSongs(user_id string) []Song {
 
 	titlesConcat := make([]Song, 0)
 
-	for i := 1; i < max_page; i++ {
+	for i := 0; i < max_page; i++ {
 		titlesConcat = append(titlesConcat, songPages[i]...)
 	}
-
-	fmt.Println("I got", len(songPages), "pages total.")
-	fmt.Println("Expected", max_page, "pages.")
 
 	return titlesConcat
 
@@ -121,7 +116,6 @@ func getLastFMPagesAsync(url string, page int, max_page int, allTitles [][]Song)
 	resp, err := http.Get(url + "&page=" + pageStr)
 	songs := SongsPage{}
 	if err == nil {
-		fmt.Println("received page ", page)
 		songsJSON, _ := ioutil.ReadAll(resp.Body)
 		resp.Body.Close()
 		err = json.Unmarshal(songsJSON, &songs)
@@ -137,6 +131,5 @@ func getLastFMPagesAsync(url string, page int, max_page int, allTitles [][]Song)
 	for _, track := range tracksRaw {
 		titles = append(titles, Song{track.Artist.Title, track.Title})
 	}
-	index, _ := strconv.Atoi(songs.RecentTracks.Metadata.Page)
-	allTitles[index-1] = titles
+	allTitles[page-1] = titles
 }
