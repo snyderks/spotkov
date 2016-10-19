@@ -7,11 +7,11 @@ A command line tool to generate a Spotify playlist of songs you might like toget
 ## Installation
 Clone the repository and install Go or if you have Go already, enter `go get github.com/snyderks/spotkov`.
 You'll also need API keys for the [Spotify](https://developer.spotify.com/web-api/) and [Last.FM](http://www.last.fm/api/account/create) web API. 
-Set environment variables (on UNIX, refer to [this article](http://www.cyberciti.biz/faq/set-environment-variable-linux/) (the process is identical on OSX), on Windows, edit your *user* environment variables at Control Panel -> System -> Advanced System Settings -> Environment Variables...)
+Set environment variables (on UNIX, refer to [this article](http://www.cyberciti.biz/faq/set-environment-variable-linux/) (the process is identical on macOS), on Windows, edit your *user* environment variables at Control Panel -> System -> Advanced System Settings -> Environment Variables...)
  - SPOTIFY_ID: your Spotify API key
  - SPOTIFY_SECRET: your Spotify API secret key
  - LASTFM_KEY: your Last.FM API key
- - LASTFM_SECRET (optional): your Last.FM secret key (currently not used by the application)
+ - LASTFM_SECRET: (optional) your Last.FM secret key (currently not used by the application)
 
  *None* of the above environment variables are stored by the application and are read again on each run.
 
