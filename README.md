@@ -11,7 +11,7 @@ Set environment variables (on UNIX, refer to [this article](http://www.cyberciti
  - SPOTIFY_ID: your Spotify API key
  - SPOTIFY_SECRET: your Spotify API secret key
  - LASTFM_KEY: your Last.FM API key
- - LASTFM_SECRET (optional): your Last.FM secret key (currently not used by the application)
+ - LASTFM_SECRET: (optional) your Last.FM secret key (currently not used by the application)
 
  *None* of the above environment variables are stored by the application and are read again on each run.
 
