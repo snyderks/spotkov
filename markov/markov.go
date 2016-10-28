@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"time"
 	"fmt"
+	"math"
 
 	"github.com/snyderks/spotkov/lastFm"
 )
@@ -24,9 +25,10 @@ type Suffix struct {
 
 type CDF [][2]int
 
-const repeatDiscount = 0.05
+const repeatDiscount = 0.5
 /* the percentage of the Chance to discount
  * the suffix to by if it's a repeat of the prefix
+ * AFTER TAKING THE Log10 OF IT
  */
 
 func BuildChain(songs []lastFm.Song) map[string]Suffixes {
@@ -96,7 +98,7 @@ func GenerateSongList(length int, startingSong lastFm.Song, chain map[string]Suf
 				for j, suffix := range suffixes {
 					var freq int
 					if suffix.Name == currentPrefix {
-						freq = int(float64(suffix.Frequency) * repeatDiscount) // float arithmetic with a truncation
+						freq = int(math.Log10(float64(suffix.Frequency)) * repeatDiscount) // float arithmetic with a truncation
 						if freq == 0 {
 							freq += 1 // don't want to make repeats impossible
 						}
