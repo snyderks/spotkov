@@ -8,6 +8,7 @@ import (
 	"time"
 	"fmt"
 	"math"
+	"errors"
 
 	"github.com/snyderks/spotkov/lastFm"
 )
@@ -28,7 +29,7 @@ type CDF [][2]int
 const repeatDiscount = 0.5
 /* the percentage of the Chance to discount
  * the suffix to by if it's a repeat of the prefix
- * AFTER TAKING THE Log10 OF IT
+ * AFTER TAKING THE NATURAL LOG OF IT
  */
 
 func BuildChain(songs []lastFm.Song) map[string]Suffixes {
@@ -39,20 +40,23 @@ func BuildChain(songs []lastFm.Song) map[string]Suffixes {
 			suffixes, exists := chain[song.Title] // try and get the suffixes
 			if exists {
 				nextSong := songs[i+1]
-				var found bool = false
-				for i, suffix := range suffixes.Suffixes {
-					if suffix.Name == nextSong.Title {
-						suffixes.Suffixes[i].Frequency += 1
-						found = true
-						break
+				timeSplit := song.Timestamp.Sub(nextSong.Timestamp)
+				if timeSplit < time.Hour {
+					var found bool = false
+					for i, suffix := range suffixes.Suffixes {
+						if suffix.Name == nextSong.Title {
+							suffixes.Suffixes[i].Frequency += 1
+							found = true
+							break
+						}
 					}
+					if found == false {
+						suffixes.Suffixes = append(suffixes.Suffixes, 
+							Suffix{Name: nextSong.Title, Artist: nextSong.Artist, Frequency: 1})
+					}
+					suffixes.Total += 1
+					chain[song.Title] = suffixes
 				}
-				if found == false {
-					suffixes.Suffixes = append(suffixes.Suffixes, 
-						Suffix{Name: nextSong.Title, Artist: nextSong.Artist, Frequency: 1})
-				}
-				suffixes.Total += 1
-				chain[song.Title] = suffixes
 			} else {
 				suffix := Suffix{Name: songs[i+1].Title, Artist: songs[i+1].Artist, Frequency: 1}
 				chain[song.Title] = Suffixes{Suffixes: append(make([]Suffix, 0), suffix)}
@@ -60,52 +64,64 @@ func BuildChain(songs []lastFm.Song) map[string]Suffixes {
 		}
 
 	}
-	// Make byte array
-	/*fo, err := os.Create("output.txt")
-	if err != nil {
-		panic(err)
-	}
-	bf := bufio.NewWriter(fo)
-	defer func() { // defer close on exit
-		if err := fo.Close(); err != nil {
-			panic(err)
-		}
-	}()
-	for key, suffixes := range chain {
-		line := "Prefix: " + key + " with " + strconv.Itoa(suffixes.Total) + " suffixes.\n"
-		for _, suffix := range suffixes.Suffixes {
-			line += ("  " + suffix.Name + ": " + strconv.Itoa(suffix.Frequency) + "\n")
-		}
-
-		_, err := bf.WriteString(line)
-		if err != nil {
-			panic(err)
-		}
-	}*/
 	return chain
 }
 
 func GenerateSongList(length int, startingSong lastFm.Song, chain map[string]Suffixes) []lastFm.Song {
-	currentPrefix := startingSong.Title
+	repeats := 0 // count of the number of repeats in a row
+	foundSuffix := false
 	list := make([]lastFm.Song, 0, length)
 	list = append(list, startingSong)
+	// Basic length loop
 	for i := 0; i < length; i++ {
-		_, exists := chain[currentPrefix]
+		foundSuffix = false;
+		/* 
+		 * Start at the end of the list and use that as the prefix.
+		 * Try it and if it doesn't work, keep going back to the start.
+		 * If we reach the start of the list and it still can't find a suffix,
+		 * kill the loop and return what was found.
+		 */
+		for j := i; j >= 0 && foundSuffix == false; j-- {
+			song, err := selectSuffix(chain, list[j].Title, &repeats)
+			if err == nil {
+				list = append(list, song)
+				foundSuffix = true;
+			} else {
+				fmt.Println(err)
+			}
+		}
+	}
+	fmt.Println(list)
+	return list
+}
+
+func adjustRepeatFrequency(baseFreq int, repeats int) int {
+	return int(math.Log(float64(baseFreq)) * (repeatDiscount / float64(repeats)))
+}
+
+func selectSuffix(chain map[string]Suffixes, prefix string, repeats *int) (lastFm.Song, error) {
+	_, exists := chain[prefix]
+	song := lastFm.Song{}
 		if exists == true {
-			if len(chain[currentPrefix].Suffixes) > 1 {
-				suffixes := chain[currentPrefix].Suffixes
+			if len(chain[prefix].Suffixes) > 1 {
+				suffixes := chain[prefix].Suffixes
 				cdf := make(CDF, 0, len(suffixes)) // cumulative distribution array with index 0 as the value, 1 as the Suffix index
 				for j, suffix := range suffixes {
 					var freq int
-					if suffix.Name == currentPrefix {
-						freq = int(math.Log10(float64(suffix.Frequency)) * repeatDiscount) // float arithmetic with a truncation
-						if freq == 0 {
-							freq += 1 // don't want to make repeats impossible
-						}
+					if suffix.Name == prefix {
+						*repeats = *repeats + 1
+						freq = adjustRepeatFrequency(suffix.Frequency, *repeats)
+					} else {
+						freq = suffix.Frequency
+						*repeats = 0 // wasn't a repeat, reset
 					}
-					cdf = append(cdf, [2]int {suffix.Frequency, j})
+					if (freq > 0) {
+						cdf = append(cdf, [2]int {freq, j})
+					}
 				}
-				sort.Sort(cdf)
+
+				sort.Sort(cdf) // making the CDF is much easier with sorting first.
+
 				// Creating the cdf here
 				for j := 1; j < len(cdf); j++ {
 					cdf[j][0] = cdf[j-1][0]
@@ -114,23 +130,18 @@ func GenerateSongList(length int, startingSong lastFm.Song, chain map[string]Suf
 				suffix := suffixes[searchCDF(cdf)]
 				name := suffix.Name
 				artist := suffix.Artist
-
-				currentPrefix = name
 				fmt.Println("I chose to add", name)
-				list = append(list, lastFm.Song{Artist: artist, Title: name})
-			} else {
-				name := chain[currentPrefix].Suffixes[0].Name
-				artist := chain[currentPrefix].Suffixes[0].Artist
+				song = lastFm.Song{Artist: artist, Title: name}
+			} else { // there's only one choice.
+				name := chain[prefix].Suffixes[0].Name
+				artist := chain[prefix].Suffixes[0].Artist
 				fmt.Println("Only one choice. I chose to add", name)
-				list = append(list, lastFm.Song{Artist: artist, Title: name})
-				currentPrefix = name
-
+				song = lastFm.Song{Artist: artist, Title: name}
 			}
+			return song, nil
 		} else {
-			panic("Couldn't find the prefix") // TODO: fail silently or find another way around not being able to find the prefix
+			return lastFm.Song{}, errors.New("Couldn't find the song for that prefix.")
 		}
-	}
-	return list
 }
 
 // Sort interface implementation

@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 )
 
 // Types to interpret JSON data returned from tracks played
@@ -35,6 +36,12 @@ type track struct {
 	Artist artist `json:"artist"`
 	Title  string `json:"name"`
 	Album  album  `json:"album"`
+	Timestamp trackDate `json:"date"`
+}
+
+type trackDate struct {
+	UnixTime string `json:"uts"`
+	TextDate string `json:"#text"`
 }
 
 type artist struct {
@@ -48,6 +55,7 @@ type album struct {
 type Song struct {
 	Artist string
 	Title string
+	Timestamp time.Time
 }
 
 var pagesWg sync.WaitGroup
@@ -84,7 +92,12 @@ func ReadLastFMSongs(user_id string) []Song {
 	pageSongs := make([]Song, 0, 50)
 
 	for _, track := range songs.RecentTracks.Tracks {
-		pageSongs = append(pageSongs, Song{track.Artist.Title, track.Title})
+		utime, err := strconv.ParseInt(track.Timestamp.UnixTime, 10, 64)
+		var ts time.Time
+		if err == nil {
+			ts = time.Unix(utime, 0)
+		}
+		pageSongs = append(pageSongs, Song{track.Artist.Title, track.Title, ts})
 	}
 
 	max_page, _ := strconv.Atoi(songs.RecentTracks.Metadata.TotalPages)
@@ -129,7 +142,12 @@ func getLastFMPagesAsync(url string, page int, max_page int, allTitles [][]Song)
 	tracksRaw := songs.RecentTracks.Tracks
 	titles := make([]Song, 0)
 	for _, track := range tracksRaw {
-		titles = append(titles, Song{track.Artist.Title, track.Title})
+		utime, err := strconv.ParseInt(track.Timestamp.UnixTime, 10, 64)
+		var ts time.Time
+		if err == nil {
+			ts = time.Unix(utime, 0)
+		}
+		titles = append(titles, Song{track.Artist.Title, track.Title, ts})
 	}
 	allTitles[page-1] = titles
 }
