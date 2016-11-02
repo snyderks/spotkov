@@ -69,6 +69,7 @@ func BuildChain(songs []lastFm.Song) map[string]Suffixes {
 
 func GenerateSongList(length int, startingSong lastFm.Song, chain map[string]Suffixes) []lastFm.Song {
 	repeats := 0 // count of the number of repeats in a row
+	deletionAttempts := 0
 	foundSuffix := false
 	list := make([]lastFm.Song, 0, length)
 	list = append(list, startingSong)
@@ -89,14 +90,84 @@ func GenerateSongList(length int, startingSong lastFm.Song, chain map[string]Suf
 			} else {
 				fmt.Println(err)
 			}
+			/*
+			 * Checking for repeated sequences here. If 2+ songs appear in
+			 * the same order, remove them, go back to the spot before that,
+			 * and try again. If more than 100 attempts were made, cut short the playlist.
+			 */
+			new_list, deleted, err := findDuplicateSequences(&list)
+			if err == nil {
+				list = new_list
+			}
+			if deleted {
+				// override the loop index because any deleted songs can't
+				// be included in the length. Have to go back 2 due to the increment.
+				i = len(list) - 2 
+				deletionAttempts++
+			} else if deleted == false {
+				deletionAttempts = 0
+			}
 		}
+		if deletionAttempts == 100 {
+			fmt.Println("Couldn't continue. Ending generation.")
+			break
+		}
+
 	}
-	fmt.Println(list)
 	return list
 }
 
 func adjustRepeatFrequency(baseFreq int, repeats int) int {
 	return int(math.Log(float64(baseFreq)) * (repeatDiscount / float64(repeats)))
+}
+
+func findDuplicateSequences(originalList *[]lastFm.Song) (list []lastFm.Song, deleting bool, err error) {
+	list = *originalList
+	defer func() {
+		if r := recover(); r != nil {
+			deleting = false
+			err = errors.New("Something went wrong in deletion or seeking through the list.")
+		}
+	}()
+	indicesToDelete := make([]int, 0)
+	for i, song := range list { // walk forward through the songs.
+		found := false
+		for j := len(list) - 1; j >= 0; j-- { // check starting from the end
+			// Make sure the indices aren't equal. Ugh.
+			if j != i && list[j].Title == song.Title && list[j].Artist == song.Artist {
+				found = true
+				indicesToDelete = append(indicesToDelete, j)
+				break
+			} else if len(indicesToDelete) == 1 {
+				indicesToDelete = make([]int, 0)
+			}
+		}
+		// This check is to determine if it's found multiple duplicates in a row
+		// and to make sure either the last one is at the end (can't continue) or
+		// if it hit the end of the sequence.
+		if len(indicesToDelete) > 1 && (found == false || indicesToDelete[len(indicesToDelete) - 1] == len(list) - 1) {
+			deleting = true
+			break
+		}
+	}
+	if deleting {
+		fmt.Println("indices:", indicesToDelete)
+		deleted := 0
+		for _, index := range indicesToDelete {
+			fmt.Println("deleting", index)
+			index -= deleted
+			fmt.Println("adjusted to", index)
+			if index < len(list) - 1 {
+				list = append(list[:index], list[index+1:]...)
+			} else {
+				list = list[:index]
+			}
+			deleted++
+			
+		}
+	}
+	return list, deleting, nil
+
 }
 
 func selectSuffix(chain map[string]Suffixes, prefix string, repeats *int) (lastFm.Song, error) {
