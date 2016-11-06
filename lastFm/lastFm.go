@@ -33,9 +33,9 @@ type metadata struct {
 }
 
 type track struct {
-	Artist artist `json:"artist"`
-	Title  string `json:"name"`
-	Album  album  `json:"album"`
+	Artist    artist    `json:"artist"`
+	Title     string    `json:"name"`
+	Album     album     `json:"album"`
 	Timestamp trackDate `json:"date"`
 }
 
@@ -53,8 +53,8 @@ type album struct {
 }
 
 type Song struct {
-	Artist string
-	Title string
+	Artist    string
+	Title     string
 	Timestamp time.Time
 }
 

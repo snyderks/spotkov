@@ -3,40 +3,40 @@
 package main
 
 import (
+	"bufio"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
-	"flag"
-	"strings"
-	"bufio"
 	"os"
+	"strings"
 
-	"github.com/snyderks/spotkov/markov"
 	"github.com/snyderks/spotkov/lastFm"
+	"github.com/snyderks/spotkov/markov"
 	"github.com/snyderks/spotkov/spotifyPlaylistGenerator"
 
-	"github.com/zmb3/spotify"
 	"github.com/atotto/clipboard"
+	"github.com/zmb3/spotify"
 )
 
 const redirectURI = "http://localhost:8080/callback"
 
 var (
-	scopes = []string {spotify.ScopeUserReadPrivate,
-										 spotify.ScopePlaylistReadPrivate,
-										 spotify.ScopePlaylistModifyPrivate,
-										 spotify.ScopePlaylistModifyPublic}
+	scopes = []string{spotify.ScopeUserReadPrivate,
+		spotify.ScopePlaylistReadPrivate,
+		spotify.ScopePlaylistModifyPrivate,
+		spotify.ScopePlaylistModifyPublic}
 	auth  = spotify.NewAuthenticator(redirectURI, scopes...)
 	ch    = make(chan *spotify.Client)
 	state = "abc123"
 )
 
 type flags struct {
-	lastFmUserId string
+	lastFmUserId   string
 	publicPlaylist bool
 	playlistLength int
-	song string
-	artist string
+	song           string
+	artist         string
 }
 
 func main() {
@@ -106,7 +106,7 @@ func main() {
 		} else {
 			seedEntered := false
 			for seedEntered == false {
-				fmt.Println("\nI won't use that as the song. Enter a song name and artist to use (separated by new lines)\n")
+				fmt.Println("\nI won't use that as the song. Enter a song name and artist to use (separated by new lines)")
 				respTitle, _ := reader.ReadString('\n')
 				respTitle = strings.TrimSpace(respTitle)
 				respArtist, _ := reader.ReadString('\n')
@@ -196,9 +196,9 @@ func handleArgs() (flags, bool) {
 	allFlags.playlistLength = *playlistLength
 	allFlags.song = *songTitle
 	allFlags.artist = *songArtist
-	
+
 	return allFlags, true
-	
+
 }
 
 func checkYesOrNo(resp string) (result, valid bool) {
