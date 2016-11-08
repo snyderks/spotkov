@@ -9,8 +9,11 @@ import (
 	"fmt"
 	"math"
 	"errors"
+	"strings"
+	"unicode"
 
 	"github.com/snyderks/spotkov/lastFm"
+	"github.com/snyderks/spotkov/utils"
 )
 
 type Suffixes struct {
@@ -31,6 +34,8 @@ const repeatDiscount = 0.5
  * the suffix to by if it's a repeat of the prefix
  * AFTER TAKING THE NATURAL LOG OF IT
  */
+
+ const maxDeletionAttempts = 200
 
 func BuildChain(songs []lastFm.Song) map[string]Suffixes {
 	// A prefix length of 1 is used (for now, it makes it super easy)
@@ -67,10 +72,12 @@ func BuildChain(songs []lastFm.Song) map[string]Suffixes {
 	return chain
 }
 
-func GenerateSongList(length int, startingSong lastFm.Song, chain map[string]Suffixes) []lastFm.Song {
+func GenerateSongList(length int, startingSong lastFm.Song, chain map[string]Suffixes) ([]lastFm.Song, error){
 	repeats := 0 // count of the number of repeats in a row
 	deletionAttempts := 0
+	clearAttempts := false
 	foundSuffix := false
+	var genError error
 	list := make([]lastFm.Song, 0, length)
 	list = append(list, startingSong)
 	// Basic length loop
@@ -88,12 +95,12 @@ func GenerateSongList(length int, startingSong lastFm.Song, chain map[string]Suf
 				list = append(list, song)
 				foundSuffix = true;
 			} else {
-				fmt.Println(err)
+				return list, err
 			}
 			/*
 			 * Checking for repeated sequences here. If 2+ songs appear in
 			 * the same order, remove them, go back to the spot before that,
-			 * and try again. If more than 100 attempts were made, cut short the playlist.
+			 * and try again. If more than max attempts were made, cut short the playlist.
 			 */
 			new_list, deleted, err := findDuplicateSequences(&list)
 			if err == nil {
@@ -104,17 +111,27 @@ func GenerateSongList(length int, startingSong lastFm.Song, chain map[string]Suf
 				// be included in the length. Have to go back 2 due to the increment.
 				i = len(list) - 2 
 				deletionAttempts++
+				clearAttempts = false
 			} else if deleted == false {
-				deletionAttempts = 0
+				/* 
+				 * Sometimes there are cycles that the generation gets in where it will
+				 * add duplicates, go to another sequence that also contains duplicates,
+				 * and repeat that. Requiring two successful additions should help. May
+				 * have to revise.
+				 */
+				if clearAttempts {
+					deletionAttempts = 0
+				}
+				clearAttempts = true
 			}
 		}
-		if deletionAttempts == 100 {
-			fmt.Println("Couldn't continue. Ending generation.")
+		if deletionAttempts == maxDeletionAttempts {
+			genError = errors.New("Too many repeat attempts.")
 			break
 		}
 
 	}
-	return list
+	return list, genError
 }
 
 func adjustRepeatFrequency(baseFreq int, repeats int) int {
@@ -123,6 +140,7 @@ func adjustRepeatFrequency(baseFreq int, repeats int) int {
 
 func findDuplicateSequences(originalList *[]lastFm.Song) (list []lastFm.Song, deleting bool, err error) {
 	list = *originalList
+	err = nil
 	defer func() {
 		if r := recover(); r != nil {
 			deleting = false
@@ -132,13 +150,25 @@ func findDuplicateSequences(originalList *[]lastFm.Song) (list []lastFm.Song, de
 	indicesToDelete := make([]int, 0)
 	for i, song := range list { // walk forward through the songs.
 		found := false
-		for j := len(list) - 1; j >= 0; j-- { // check starting from the end
+
+		var j int
+		if len(indicesToDelete) > 0 {
+			j = indicesToDelete[len(indicesToDelete) - 1] + 1 
+			// The loop goes backwards. No need to start from the end.
+			// Checking the next one first is plenty.
+		} else {
+			j = len(list) - 1 // Start from the end all normal-like
+		}
+		for ; j >= 0; j-- { // check in reverse
 			// Make sure the indices aren't equal. Ugh.
 			if j != i && list[j].Title == song.Title && list[j].Artist == song.Artist {
 				found = true
 				indicesToDelete = append(indicesToDelete, j)
 				break
-			} else if len(indicesToDelete) == 1 {
+				// There's a check for the index being 0. This catches an issue where there's a duplicate
+				// sequence in the middle of the list; it'll find the first one, start from the end, and
+				// hit this else if. It should run through the whole list.
+			} else if len(indicesToDelete) == 1 && j == 0 {
 				indicesToDelete = make([]int, 0)
 			}
 		}
@@ -151,12 +181,9 @@ func findDuplicateSequences(originalList *[]lastFm.Song) (list []lastFm.Song, de
 		}
 	}
 	if deleting {
-		fmt.Println("indices:", indicesToDelete)
 		deleted := 0
 		for _, index := range indicesToDelete {
-			fmt.Println("deleting", index)
 			index -= deleted
-			fmt.Println("adjusted to", index)
 			if index < len(list) - 1 {
 				list = append(list[:index], list[index+1:]...)
 			} else {
@@ -166,12 +193,28 @@ func findDuplicateSequences(originalList *[]lastFm.Song) (list []lastFm.Song, de
 			
 		}
 	}
-	return list, deleting, nil
+	return list, deleting, err
 
 }
 
 func selectSuffix(chain map[string]Suffixes, prefix string, repeats *int) (lastFm.Song, error) {
-	_, exists := chain[prefix]
+	prefix = strings.Map(func (r rune) rune {
+			if unicode.IsPunct(r) == true {
+				return -1
+			}
+			return r
+		}, strings.ToLower(prefix))
+	exists := false
+	for key := range chain {
+		fmtPrefix := utils.LowerAndStripPunct(prefix)
+		fmtKey := utils.LowerAndStripPunct(key)
+		if fmtKey == fmtPrefix || strings.HasPrefix(fmtKey, fmtPrefix) {
+			exists = true
+			// It might be slightly different in the chain. This will allow it to continue if it is.
+			prefix = key 
+			break
+		} 
+	}
 	song := lastFm.Song{}
 		if exists == true {
 			if len(chain[prefix].Suffixes) > 1 {
@@ -179,7 +222,15 @@ func selectSuffix(chain map[string]Suffixes, prefix string, repeats *int) (lastF
 				cdf := make(CDF, 0, len(suffixes)) // cumulative distribution array with index 0 as the value, 1 as the Suffix index
 				for j, suffix := range suffixes {
 					var freq int
-					if suffix.Name == prefix {
+					suffixName := strings.Map(func (r rune) rune {
+						if unicode.IsPunct(r) == true {
+							return -1
+						}
+						return r
+					}, strings.ToLower(suffix.Name))
+					// Case insensitive comparison and prefix matching (substring is a bad idea)
+					// because many songs have similar names
+					if suffixName == prefix || strings.HasPrefix(suffixName, prefix) {
 						*repeats = *repeats + 1
 						freq = adjustRepeatFrequency(suffix.Frequency, *repeats)
 					} else {

@@ -135,8 +135,32 @@ func main() {
 	if args.playlistLength > 0 {
 		length = args.playlistLength
 	}
-	list := markov.GenerateSongList(length, lastFm.Song{Artist: args.artist, Title: args.song}, chain)
-	spotifyPlaylistGenerator.CreatePlaylist(list, client, user.ID)
+	list, err := markov.GenerateSongList(length, lastFm.Song{Artist: args.artist, Title: args.song}, chain)
+	createPlaylist := true
+	if err != nil {
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Println("An error was encountered when creating the list:", err)
+		fmt.Println("Go ahead and create the playlist anyway? (Yes/No)")
+		resp, _ := reader.ReadString('\n')
+		resp = strings.TrimSpace(resp)
+
+		result, valid := checkYesOrNo(resp)
+		for valid == false {
+			fmt.Println("\nInvalid response. Please type yes or no.")
+			resp, _ = reader.ReadString('\n')
+			resp = strings.TrimSpace(resp)
+			result, valid = checkYesOrNo(resp)
+		}
+		if result == true {
+			createPlaylist = true
+		} else {
+			fmt.Println("Okay. No changes to the playlist were made.")
+			createPlaylist = false
+		}
+	}
+	if createPlaylist == true {
+		spotifyPlaylistGenerator.CreatePlaylist(list, client, user.ID)
+	}
 }
 
 // internal startup functions
