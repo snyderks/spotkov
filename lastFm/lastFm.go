@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/snyderks/spotkov/configRead"
 )
 
 // Types to interpret JSON data returned from tracks played
@@ -69,7 +71,12 @@ func ReadLastFMSongs(user_id string) []Song {
 	api_key, key_success := os.LookupEnv("LASTFM_KEY")
 	get_json := true
 	if key_success == false {
-		log.Fatal("couldn't get API key for LastFM from the env vars")
+		config, err := configRead.ReadConfig("config.json")
+		if err != nil {
+			panic("Couldn't read config or get env vars")
+		} else {
+			api_key = config.LastFmKey
+		}
 	}
 	last_url := baseLastURI + "?method=" + method + "&user=" + user_id + "&api_key=" + api_key + "&limit=200"
 	if get_json {
