@@ -3,7 +3,9 @@
 package lastFm
 
 import (
+	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -61,11 +63,67 @@ type Song struct {
 	Timestamp time.Time
 }
 
+type songFile struct {
+	Songs []Song
+}
+
+func readCachedSongs(userID string, songs interface{}) error {
+	file, err := os.Open("./cached-songs/" + userID + ".gob")
+	if err == nil {
+		decoder := gob.NewDecoder(file)
+		err = decoder.Decode(songs)
+	}
+	file.Close()
+	return err
+}
+
+func cacheSongs(userID string, songs songFile) error {
+	file, err := os.Create("./cached-songs/" + userID + ".gob")
+	if err == nil {
+		encoder := gob.NewEncoder(file)
+		encoder.Encode(songs)
+	}
+	file.Close()
+	return err
+}
+
 var pagesWg sync.WaitGroup
 
 const baseLastURI = "http://ws.audioscrobbler.com/2.0/"
 
 func ReadLastFMSongs(user_id string) []Song {
+	file := songFile{}
+	err := readCachedSongs(user_id, &file)
+	titlesConcat := file.Songs
+	if len(titlesConcat) == 0 {
+		err = errors.New("Length of cached songs is 0. Regenerating...")
+	}
+
+	if err != nil { // couldn't retrieve a cached version
+		titlesConcat = getAllTitles(make([]Song, 0), time.Time{}, user_id)
+	} else {
+		var lastDate time.Time
+		for _, song := range titlesConcat {
+			if !song.Timestamp.IsZero() {
+				lastDate = song.Timestamp
+				break
+			}
+		}
+		titlesConcat = getAllTitles(titlesConcat, lastDate, user_id)
+	}
+
+	err = cacheSongs(user_id, songFile{titlesConcat})
+	if err != nil {
+		fmt.Println("Couldn't cache the songs:", err)
+	}
+
+	fmt.Println(titlesConcat[0])
+
+	return titlesConcat
+
+}
+
+func getAllTitles(titles []Song, startTime time.Time, user_id string) []Song {
 	// try to do things with last.fm
 	method := "user.getrecenttracks"
 	api_key, key_success := os.LookupEnv("LASTFM_KEY")
@@ -78,7 +136,16 @@ func ReadLastFMSongs(user_id string) []Song {
 			api_key = config.LastFmKey
 		}
 	}
-	last_url := baseLastURI + "?method=" + method + "&user=" + user_id + "&api_key=" + api_key + "&limit=200"
+	urlTime := "0"
+	if !startTime.IsZero() {
+		timeInt := startTime.UTC().Unix()
+		if timeInt > 0 {
+			urlTime = strconv.FormatInt(timeInt+1, 10)
+		}
+	}
+	last_url := baseLastURI + "?method=" + method + "&user=" + user_id + "&api_key=" + api_key +
+		"&limit=200" + "&from=" + urlTime
+	fmt.Println(last_url)
 	if get_json {
 		last_url += "&format=json"
 	}
@@ -128,6 +195,10 @@ func ReadLastFMSongs(user_id string) []Song {
 
 	max_page, _ := strconv.Atoi(songs.RecentTracks.Metadata.TotalPages)
 
+	if max_page < 1 {
+		max_page = 1
+	}
+
 	songPages := make([][]Song, max_page)
 
 	songPages[0] = pageSongs
@@ -148,14 +219,11 @@ func ReadLastFMSongs(user_id string) []Song {
 		}
 	}
 
-	titlesConcat := make([]Song, 0)
-
 	for i := 0; i < max_page; i++ {
-		titlesConcat = append(titlesConcat, songPages[i]...)
+		titles = append(titles, songPages[i]...)
 	}
 
-	return titlesConcat
-
+	return titles
 }
 
 func getLastFMPagesAsync(url string, page int, max_page int, allTitles [][]Song) {
