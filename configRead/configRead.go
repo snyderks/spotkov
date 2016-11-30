@@ -11,6 +11,11 @@ type Config struct {
 	SpotifySecret string `json:"spotify-secret"`
 	LastFmKey     string `json:"lastfm-key"`
 	LastFmSecret  string `json:"lastfm-secret"`
+	CertPath      string `json:"cert-path"`
+	CertKeyPath   string `json:"cert-key-path"`
+	HTTPPort      string `json:"http-port"`
+	TLSPort       string `json:"tls-port"`
+	Hostname      string `json:"hostname,omitempty"`
 }
 
 func ReadConfig(path string) (Config, error) {
