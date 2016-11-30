@@ -145,7 +145,6 @@ func getAllTitles(titles []Song, startTime time.Time, user_id string) []Song {
 	}
 	last_url := baseLastURI + "?method=" + method + "&user=" + user_id + "&api_key=" + api_key +
 		"&limit=200" + "&from=" + urlTime
-	fmt.Println(last_url)
 	if get_json {
 		last_url += "&format=json"
 	}
@@ -210,6 +209,7 @@ func getAllTitles(titles []Song, startTime time.Time, user_id string) []Song {
 
 	pagesWg.Wait()
 
+	// reversing all of the pages
 	topIndex = len(songPages) - 1
 	for i := topIndex; i >= 0; i-- {
 		if topIndex-i != i {
@@ -218,9 +218,16 @@ func getAllTitles(titles []Song, startTime time.Time, user_id string) []Song {
 			songPages[topIndex-i] = temp
 		}
 	}
-
-	for i := 0; i < max_page; i++ {
-		titles = append(titles, songPages[i]...)
+	if !startTime.IsZero() && len(titles) > 0 {
+		// normal append for a new list
+		for i := 0; i < max_page; i++ {
+			titles = append(songPages[i], titles...)
+		}
+	} else {
+		// if we're adding to the cache, have to prepend the new songs
+		for i := 0; i < max_page; i++ {
+			titles = append(titles, songPages[i]...)
+		}
 	}
 
 	return titles
