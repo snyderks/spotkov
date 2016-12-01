@@ -72,7 +72,7 @@ func main() {
 	}
 	fmt.Println("You are logged in as:", user.ID)
 
-	titles := lastFm.ReadLastFMSongs(args.lastFmUserId)
+	titles, _ := lastFm.ReadLastFMSongs(args.lastFmUserId)
 
 	if len(titles) > 0 {
 		fmt.Println("Success! I got", len(titles), "titles from your Last.FM profile.")

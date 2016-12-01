@@ -56,7 +56,7 @@ func TestGetListOfSongs(t *testing.T) {
 		t.Error("Couldn't convert songsExpected to a number.")
 	}
 
-	songs := lastFm.ReadLastFMSongs(lastFmID)
+	songs, _ := lastFm.ReadLastFMSongs(lastFmID)
 	if len(songs) != songsExpected {
 		t.Error("Didn't get the number of songs expected:", len(songs), "instead of", songsExpected)
 	}
