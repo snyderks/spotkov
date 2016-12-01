@@ -41,6 +41,9 @@ func TestReadConfig(t *testing.T) {
 	if len(config.Hostname) == 0 {
 		t.Error("Hostname was not read.")
 	}
+	if len(config.AuthRedirectURL) == 0 {
+		t.Error("AuthRedirectURL was not read.")
+	}
 }
 
 func TestFailOpenConfig(t *testing.T) {

@@ -7,5 +7,6 @@
   "cert-key-path" : "03uoiuo.p12",
   "http-port" : ":80",
   "tls-port" : ":443",
-  "hostname" : "siteysite.site"
+  "hostname" : "siteysite.site",
+  "auth-redirect-url" : "siteysite.site/callback"
 }

@@ -67,6 +67,11 @@ type songFile struct {
 	Songs []Song
 }
 
+type lastFMError struct {
+	Error   int    `json:"error"`
+	Message string `json:"message"`
+}
+
 func readCachedSongs(userID string, songs interface{}) error {
 	file, err := os.Open("./cached-songs/" + userID + ".gob")
 	if err == nil {
@@ -91,7 +96,7 @@ var pagesWg sync.WaitGroup
 
 const baseLastURI = "http://ws.audioscrobbler.com/2.0/"
 
-func ReadLastFMSongs(user_id string) []Song {
+func ReadLastFMSongs(user_id string) ([]Song, error) {
 	file := songFile{}
 	err := readCachedSongs(user_id, &file)
 	titlesConcat := file.Songs
@@ -99,8 +104,10 @@ func ReadLastFMSongs(user_id string) []Song {
 		err = errors.New("Length of cached songs is 0. Regenerating...")
 	}
 
+	var errLastFM lastFMError
+
 	if err != nil { // couldn't retrieve a cached version
-		titlesConcat = getAllTitles(make([]Song, 0), time.Time{}, user_id)
+		titlesConcat, errLastFM = getAllTitles(make([]Song, 0), time.Time{}, user_id)
 	} else {
 		var lastDate time.Time
 		for _, song := range titlesConcat {
@@ -109,7 +116,11 @@ func ReadLastFMSongs(user_id string) []Song {
 				break
 			}
 		}
-		titlesConcat = getAllTitles(titlesConcat, lastDate, user_id)
+		titlesConcat, errLastFM = getAllTitles(titlesConcat, lastDate, user_id)
+	}
+
+	if errLastFM.Error != 0 {
+		return nil, errors.New("An error has occurred. Please try again later.")
 	}
 
 	err = cacheSongs(user_id, songFile{titlesConcat})
@@ -117,13 +128,22 @@ func ReadLastFMSongs(user_id string) []Song {
 		fmt.Println("Couldn't cache the songs:", err)
 	}
 
-	fmt.Println(titlesConcat[0])
+	if len(titlesConcat) == 0 {
+		err = errors.New("Failed to retrieve any play history. Did you type your username correctly?")
+	}
 
-	return titlesConcat
+	return titlesConcat, err
 
 }
 
-func getAllTitles(titles []Song, startTime time.Time, user_id string) []Song {
+func getAllTitles(titles []Song, startTime time.Time, user_id string) (newTitles []Song, errLastFM lastFMError) {
+	defer func() {
+		if r := recover(); r != nil {
+			errLastFM.Error = r.(int)
+			errLastFM.Message = r.(string)
+			newTitles = make([]Song, 0)
+		}
+	}()
 	// try to do things with last.fm
 	method := "user.getrecenttracks"
 	api_key, key_success := os.LookupEnv("LASTFM_KEY")
@@ -202,12 +222,36 @@ func getAllTitles(titles []Song, startTime time.Time, user_id string) []Song {
 
 	songPages[0] = pageSongs
 
-	for i := 2; i <= max_page; i++ {
-		pagesWg.Add(1)
-		go getLastFMPagesAsync(last_url, i, max_page, songPages)
-	}
+	batchAmt := 100
 
-	pagesWg.Wait()
+	if max_page > batchAmt { // have to batch to avoid socket overload
+		for i := 0; i <= max_page/batchAmt; i++ {
+			var maxBatch int
+			if (i+1)*batchAmt > max_page {
+				maxBatch = max_page
+			} else {
+				maxBatch = (i + 1) * batchAmt
+			}
+			if i == 0 {
+				for j := 2; j <= maxBatch; j++ {
+					pagesWg.Add(1)
+					go getLastFMPagesAsync(last_url, j, maxBatch, songPages)
+				}
+			} else {
+				for j := i*batchAmt + 1; j <= maxBatch; j++ {
+					pagesWg.Add(1)
+					go getLastFMPagesAsync(last_url, j, maxBatch, songPages)
+				}
+			}
+			pagesWg.Wait()
+		}
+	} else {
+		for i := 2; i <= max_page; i++ {
+			pagesWg.Add(1)
+			go getLastFMPagesAsync(last_url, i, max_page, songPages)
+		}
+		pagesWg.Wait()
+	}
 
 	// reversing all of the pages
 	topIndex = len(songPages) - 1
@@ -230,24 +274,34 @@ func getAllTitles(titles []Song, startTime time.Time, user_id string) []Song {
 		}
 	}
 
-	return titles
+	return titles, lastFMError{}
 }
 
 func getLastFMPagesAsync(url string, page int, max_page int, allTitles [][]Song) {
 	defer pagesWg.Done()
 	pageStr := strconv.Itoa(page)
-	resp, err := http.Get(url + "&page=" + pageStr)
 	songs := SongsPage{}
-	if err == nil {
-		songsJSON, _ := ioutil.ReadAll(resp.Body)
-		resp.Body.Close()
-		err = json.Unmarshal(songsJSON, &songs)
-		if err != nil {
-			log.Fatal("couldn't read the body of the last.fm response")
+	rateLimited := true
+	tries := 0
+	for rateLimited == true && tries < 4 {
+		tr := &http.Transport{
+			DisableKeepAlives: true,
 		}
-	} else {
-		fmt.Println(err)
+		c := &http.Client{Transport: tr, Timeout: 5 * time.Second}
+		resp, err := c.Get(url + "&page=" + pageStr)
+		if err == nil && resp.StatusCode == http.StatusOK {
+			songsJSON, err := ioutil.ReadAll(resp.Body)
+			resp.Body.Close()
+			err = json.Unmarshal(songsJSON, &songs)
+			if err != nil {
+				rateLimited = true
+				tries = tries + 1
+			} else {
+				rateLimited = false
+			}
+		}
 	}
+
 	var tracksRaw []track
 	// Eliminate currently playing track if returned.
 	containsNowPlaying := false

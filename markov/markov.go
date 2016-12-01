@@ -121,7 +121,7 @@ func GenerateSongList(length int, startingSong lastFm.Song, chain map[string]Suf
 			}
 		}
 		if deletionAttempts == maxDeletionAttempts {
-			genError = errors.New("Too many repeat attempts.")
+			genError = errors.New("An error occurred in generating your playlist. Please try again.")
 			break
 		}
 
@@ -238,9 +238,8 @@ func selectSuffix(chain map[string]Suffixes, prefix string, repeats *int) (lastF
 			song = lastFm.Song{Artist: artist, Title: name}
 		}
 		return song, nil
-	} else {
-		return lastFm.Song{}, errors.New("Couldn't find the song for that prefix.")
 	}
+	return lastFm.Song{}, errors.New("The song you entered couldn't be found. Please try again.")
 }
 
 // Sort interface implementation
