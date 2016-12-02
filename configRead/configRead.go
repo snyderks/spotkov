@@ -2,6 +2,7 @@ package configRead
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"os"
 )
@@ -29,7 +30,9 @@ func ReadConfig(path string) (Config, error) {
 			Hostname:        os.Getenv("HOSTNAME"),
 			AuthRedirectURL: os.Getenv("AUTH_REDIRECT"),
 		}
-		return config, nil
+		if len(config.AuthRedirectURL) == 0 {
+			return Config{}, errors.New("Couldn't read environment variables")
+		}
 	}
 	config := Config{}
 	err = json.Unmarshal(file, &config)
