@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"os"
+	"strings"
 )
 
 // Struct for config
@@ -29,6 +30,9 @@ func ReadConfig(path string) (Config, error) {
 			HTTPPort:        os.Getenv("PORT"),
 			Hostname:        os.Getenv("HOSTNAME"),
 			AuthRedirectURL: os.Getenv("AUTH_REDIRECT"),
+		}
+		if !strings.Contains(config.HTTPPort, ":") {
+			config.HTTPPort = ":" + config.HTTPPort
 		}
 		if len(config.AuthRedirectURL) == 0 {
 			return Config{}, errors.New("Couldn't read environment variables")
