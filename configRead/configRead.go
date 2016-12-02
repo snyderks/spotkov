@@ -32,6 +32,8 @@ func ReadConfig(path string) (Config, error) {
 		}
 		if len(config.AuthRedirectURL) == 0 {
 			return Config{}, errors.New("Couldn't read environment variables")
+		} else {
+			return config, nil
 		}
 	}
 	config := Config{}
