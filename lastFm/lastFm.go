@@ -84,6 +84,9 @@ func readCachedSongs(userID string, songs interface{}) error {
 
 func cacheSongs(userID string, songs songFile) error {
 	file, err := os.Create("./cached-songs/" + userID + ".gob")
+	if err != nil {
+		err = os.Mkdir("./cached-songs", 0666)
+	}
 	if err == nil {
 		encoder := gob.NewEncoder(file)
 		encoder.Encode(songs)
