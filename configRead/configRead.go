@@ -1,3 +1,5 @@
+// Package configRead reads configuration information from either a JSON file or from
+// static environment variables as a fallback.
 package configRead
 
 import (
@@ -8,7 +10,7 @@ import (
 	"strings"
 )
 
-// Struct for config
+// Config holds the different configuration options.
 type Config struct {
 	SpotifyKey      string `json:"spotify-key"`
 	SpotifySecret   string `json:"spotify-secret"`
@@ -19,6 +21,9 @@ type Config struct {
 	AuthRedirectURL string `json:"auth-redirect-url"`
 }
 
+// ReadConfig takes a path to a JSON file.
+// If it fails to read the file, it falls back to environment variables.
+// Returns an error if it can't parse the JSON file or if it can't read environment variables.
 func ReadConfig(path string) (Config, error) {
 	file, err := ioutil.ReadFile(path)
 	if err != nil { // not using json config. Try to get it from env vars

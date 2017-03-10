@@ -1,5 +1,4 @@
-// handles the retrieval of data from Last.FM (currently without authentication)
-
+// Package lastFm handles the retrieval of song data from Last.FM.
 package lastFm
 
 import (
@@ -18,16 +17,19 @@ import (
 	"github.com/snyderks/spotkov/configRead"
 )
 
-// Types to interpret JSON data returned from tracks played
+// SongsPage holds a list of tracks in a page.
 type SongsPage struct {
 	RecentTracks tracksWrapper `json:"recentTracks"`
 }
 
+// tracksWrapper holds a list of tracks and various information about the page
+// retrieved from the server.
 type tracksWrapper struct {
 	Tracks   []track  `json:"track"`
 	Metadata metadata `json:"@attr"`
 }
 
+// metadata contains general information about the page retrieved.
 type metadata struct {
 	UserId       string `json:"user"`
 	Page         string `json:"page"`
@@ -36,6 +38,7 @@ type metadata struct {
 	TotalSongs   string `json:"total"`
 }
 
+// track holds all information about the song retrieved.
 type track struct {
 	Artist     artist                 `json:"artist"`
 	Title      string                 `json:"name"`
@@ -44,34 +47,46 @@ type track struct {
 	Attributes map[string]interface{} `json:"@attr"`
 }
 
+// trackDate holds both a Unix representation
+// and a text representation of the date and time
+// the track was scrobbled.
 type trackDate struct {
 	UnixTime string `json:"uts"`
 	TextDate string `json:"#text"`
 }
 
+// artist is the name of an artist.
 type artist struct {
 	Title string `json:"#text"`
 }
 
+// album is the name of an album.
 type album struct {
 	Title string `json:"#text"`
 }
 
+// Song has an artist name, the title of the song, and when the song
+// was scrobbled by the user.
 type Song struct {
 	Artist    string
 	Title     string
 	Timestamp time.Time
 }
 
+// songFile contains a list of Songs.
 type songFile struct {
 	Songs []Song
 }
 
+// lastFMError contains the format of an error received if something
+// went wrong during an API call.
 type lastFMError struct {
 	Error   int    `json:"error"`
 	Message string `json:"message"`
 }
 
+// readCachedSongs reads any existing song data about a user and
+// stores that data into the songs argument.
 func readCachedSongs(userID string, songs interface{}) error {
 	file, err := os.Open("./cached-songs/" + userID + ".gob")
 	if err == nil {
@@ -82,6 +97,8 @@ func readCachedSongs(userID string, songs interface{}) error {
 	return err
 }
 
+// cacheSongs takes song data and stores it in a binary data format
+// used by golang called a gob.
 func cacheSongs(userID string, songs songFile) error {
 	file, err := os.Create("./cached-songs/" + userID + ".gob")
 	if err != nil {
@@ -96,10 +113,14 @@ func cacheSongs(userID string, songs songFile) error {
 	return err
 }
 
+// pagesWg manages the number of pages currently being searched for.
 var pagesWg sync.WaitGroup
 
+// baseLastURI is the root of the API path for Last.FM.
 const baseLastURI = "http://ws.audioscrobbler.com/2.0/"
 
+// ReadLastFMSongs retrieves all scrobbled Last.FM songs for a specific user.
+// Returns an error on failure.
 func ReadLastFMSongs(user_id string) ([]Song, error) {
 	file := songFile{}
 	err := readCachedSongs(user_id, &file)
@@ -140,6 +161,8 @@ func ReadLastFMSongs(user_id string) ([]Song, error) {
 
 }
 
+// getAllTitles takes a list of songs and returns the songs for the user scrobbled after a certain time.
+// Returns an error if something goes wrong.
 func getAllTitles(titles []Song, startTime time.Time, user_id string) (newTitles []Song, errLastFM lastFMError) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -281,6 +304,8 @@ func getAllTitles(titles []Song, startTime time.Time, user_id string) (newTitles
 	return titles, lastFMError{}
 }
 
+// getLastFMPagesAsync populates allTitles with lists of lists of songs.
+// Fully encapsulates all async work.
 func getLastFMPagesAsync(url string, page int, max_page int, allTitles [][]Song) {
 	defer pagesWg.Done()
 	pageStr := strconv.Itoa(page)
