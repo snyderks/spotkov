@@ -1,6 +1,9 @@
 # Config file #
 config.json
 
+# Caches #
+cached-songs
+
 # Executables #
 *.exe
 spotkov
