@@ -13,3 +13,6 @@ spotkov
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# VSCode Things #
+.vscode

@@ -15,62 +15,75 @@ import (
 	"github.com/snyderks/spotkov/utils"
 )
 
+// Suffixes holds all suffixes for a specific song
 type Suffixes struct {
 	Suffixes []Suffix
 	Total    int // total number of Frequencies
 }
 
+// Suffix holds a song that occurs after another song.
+// Multiple suffixes with the same name can be duplicated
+// across multiple source songs.
 type Suffix struct {
 	Name      string
 	Artist    string // for more accurate lookup in Spotify
 	Frequency int    // number of times the suffix happens
 }
 
+// CDF is a structure for a continuous distribution function,
+// generated from the chain.
 type CDF [][2]int
 
-const maxDeletionAttempts = 200
+const maxAttempts = 200
 
+// BuildChain determines what songs are played after others and creates a
+// chain to then randomly select from.
+// Takes an array of songs and returns a map.
 func BuildChain(songs []lastFm.Song) map[string]Suffixes {
-	// A prefix length of 1 is used (for now, it makes it super easy)
+	// A prefix length of 1 is used (for now, it makes it super easy to get subsequent songs)
 	chain := make(map[string]Suffixes, len(songs))
-	for i, song := range songs {
-		if i != len(songs)-1 {
-			suffixes, exists := chain[song.Title] // try and get the suffixes
-			if exists {
-				nextSong := songs[i+1]
-				if nextSong.Title != song.Title || nextSong.Artist != song.Artist { // don't want to add duplicates
-					timeSplit := song.Timestamp.Sub(nextSong.Timestamp)
-					if timeSplit < time.Hour {
-						var found bool = false
-						for i, suffix := range suffixes.Suffixes {
-							if suffix.Name == nextSong.Title {
-								suffixes.Suffixes[i].Frequency += 1
-								found = true
-								break
-							}
+	// Creating suffixes, so the last song played doesn't have any yet.
+	for i, song := range songs[:len(songs)-1] {
+		// try and get the suffixes
+		suffixes, exists := chain[song.Title]
+		if exists {
+			nextSong := songs[i+1]
+			// don't want to add duplicates
+			if nextSong.Title != song.Title || nextSong.Artist != song.Artist {
+				timeSplit := song.Timestamp.Sub(nextSong.Timestamp)
+				if timeSplit < time.Hour {
+					found := false
+					for i, suffix := range suffixes.Suffixes {
+						if suffix.Name == nextSong.Title {
+							suffixes.Suffixes[i].Frequency++
+							found = true
+							break
 						}
-						if found == false {
-							suffixes.Suffixes = append(suffixes.Suffixes,
-								Suffix{Name: nextSong.Title, Artist: nextSong.Artist, Frequency: 1})
-						}
-						suffixes.Total += 1
-						chain[song.Title] = suffixes
 					}
+					if !found {
+						suffixes.Suffixes = append(suffixes.Suffixes,
+							Suffix{Name: nextSong.Title, Artist: nextSong.Artist, Frequency: 1})
+					}
+					suffixes.Total += 1
+					chain[song.Title] = suffixes
 				}
-			} else {
-				suffix := Suffix{Name: songs[i+1].Title, Artist: songs[i+1].Artist, Frequency: 1}
-				chain[song.Title] = Suffixes{Suffixes: append(make([]Suffix, 0), suffix)}
+			}
+		} else {
+			suffix := Suffix{
+				Name:      songs[i+1].Title,
+				Artist:    songs[i+1].Artist,
+				Frequency: 1,
+			}
+			chain[song.Title] = Suffixes{
+				Suffixes: append(make([]Suffix, 0), suffix),
 			}
 		}
-
 	}
 	return chain
 }
 
 func GenerateSongList(length int, startingSong lastFm.Song, chain map[string]Suffixes) ([]lastFm.Song, error) {
-	repeats := 0 // count of the number of repeats in a row
-	deletionAttempts := 0
-	clearAttempts := false
+	attempts := 0
 	foundSuffix := false
 	var genError error
 	list := make([]lastFm.Song, 0, length)
@@ -78,117 +91,41 @@ func GenerateSongList(length int, startingSong lastFm.Song, chain map[string]Suf
 	// Basic length loop
 	for i := 0; i < length-1; i++ {
 		foundSuffix = false
-		/*
-		 * Start at the end of the list and use that as the prefix.
-		 * Try it and if it doesn't work, keep going back to the start.
-		 * If we reach the start of the list and it still can't find a suffix,
-		 * kill the loop and return what was found.
-		 */
+		// Start at the end of the list and use that as the prefix.
+		// Try it and if it doesn't work, keep going back to the start.
+		// If we reach the start of the list and it still can't find a suffix,
+		// kill the loop and return what was found.
 		for j := i; j >= 0 && foundSuffix == false; j-- {
-			song, err := selectSuffix(chain, list[j].Title, &repeats)
+			song, err := selectSuffix(chain, list[j].Title)
 			if err == nil {
-				list = append(list, song)
+				// do not add the song if it's already in the list.
+				isDupe := false
+				for _, s := range list {
+					// this is considered a match
+					if s.Title == song.Title && s.Artist == song.Artist {
+						isDupe = true
+						break
+					}
+				}
+				if !isDupe {
+					list = append(list, song)
+				} else {
+					attempts++
+				}
 				foundSuffix = true
 			} else {
 				return list, err
 			}
-			/*
-			 * Checking for repeated sequences here. If 2+ songs appear in
-			 * the same order, remove them, go back to the spot before that,
-			 * and try again. If more than max attempts were made, cut short the playlist.
-			 */
-			new_list, deleted, err := findDuplicateSequences(&list)
-			if err == nil {
-				list = new_list
-			}
-			if deleted {
-				// override the loop index because any deleted songs can't
-				// be included in the length. Have to go back 2 due to the increment.
-				i = len(list) - 2
-				deletionAttempts++
-				clearAttempts = false
-			} else if deleted == false {
-				/*
-				 * Sometimes there are cycles that the generation gets in where it will
-				 * add duplicates, go to another sequence that also contains duplicates,
-				 * and repeat that. Requiring two successful additions should help. May
-				 * have to revise.
-				 */
-				if clearAttempts {
-					deletionAttempts = 0
-				}
-				clearAttempts = true
-			}
 		}
-		if deletionAttempts == maxDeletionAttempts {
+		if attempts == maxAttempts || !foundSuffix {
 			genError = errors.New("An error occurred in generating your playlist. Please try again.")
 			break
 		}
-
 	}
 	return list, genError
 }
 
-func findDuplicateSequences(originalList *[]lastFm.Song) (list []lastFm.Song, deleting bool, err error) {
-	list = *originalList
-	err = nil
-	defer func() {
-		if r := recover(); r != nil {
-			deleting = false
-			err = errors.New("Something went wrong in deletion or seeking through the list.")
-		}
-	}()
-	indicesToDelete := make([]int, 0)
-	for i, song := range list { // walk forward through the songs.
-		found := false
-
-		var j int
-		if len(indicesToDelete) > 0 {
-			j = indicesToDelete[len(indicesToDelete)-1] + 1
-			// The loop goes backwards. No need to start from the end.
-			// Checking the next one first is plenty.
-		} else {
-			j = len(list) - 1 // Start from the end all normal-like
-		}
-		for ; j >= 0; j-- { // check in reverse
-			// Make sure the indices aren't equal. Ugh.
-			if j != i && list[j].Title == song.Title && list[j].Artist == song.Artist {
-				found = true
-				indicesToDelete = append(indicesToDelete, j)
-				break
-				// There's a check for the index being 0. This catches an issue where there's a duplicate
-				// sequence in the middle of the list; it'll find the first one, start from the end, and
-				// hit this else if. It should run through the whole list.
-			} else if len(indicesToDelete) == 1 && j == 0 {
-				indicesToDelete = make([]int, 0)
-			}
-		}
-		// This check is to determine if it's found multiple duplicates in a row
-		// and to make sure either the last one is at the end (can't continue) or
-		// if it hit the end of the sequence.
-		if len(indicesToDelete) > 1 && (found == false || indicesToDelete[len(indicesToDelete)-1] == len(list)-1) {
-			deleting = true
-			break
-		}
-	}
-	if deleting {
-		deleted := 0
-		for _, index := range indicesToDelete {
-			index -= deleted
-			if index < len(list)-1 {
-				list = append(list[:index], list[index+1:]...)
-			} else {
-				list = list[:index]
-			}
-			deleted++
-
-		}
-	}
-	return list, deleting, err
-
-}
-
-func selectSuffix(chain map[string]Suffixes, prefix string, repeats *int) (lastFm.Song, error) {
+func selectSuffix(chain map[string]Suffixes, prefix string) (lastFm.Song, error) {
 	prefix = strings.Map(func(r rune) rune {
 		if unicode.IsPunct(r) == true {
 			return -1
@@ -207,7 +144,7 @@ func selectSuffix(chain map[string]Suffixes, prefix string, repeats *int) (lastF
 		}
 	}
 	song := lastFm.Song{}
-	if exists == true {
+	if exists {
 		if len(chain[prefix].Suffixes) > 1 {
 			suffixes := chain[prefix].Suffixes
 			cdf := make(CDF, 0, len(suffixes)) // cumulative distribution array with index 0 as the value, 1 as the Suffix index
