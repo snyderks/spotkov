@@ -82,8 +82,9 @@ func BuildChain(songs []lastFm.Song) map[string]Suffixes {
 	return chain
 }
 
-func GenerateSongList(length int, startingSong lastFm.Song, chain map[string]Suffixes) ([]lastFm.Song, error) {
-	attempts := 0
+// GenerateSongList takes a seed song, a chain to select from, a length, and the maximum songs by one artist in a row.
+// It returns a list of songs and an optional error.
+func GenerateSongList(length int, maxBySameArtist int, startingSong lastFm.Song, chain map[string]Suffixes) ([]lastFm.Song, error) {
 	foundSuffix := false
 	var genError error
 	list := make([]lastFm.Song, 0, length)
@@ -96,28 +97,50 @@ func GenerateSongList(length int, startingSong lastFm.Song, chain map[string]Suf
 		// If we reach the start of the list and it still can't find a suffix,
 		// kill the loop and return what was found.
 		for j := i; j >= 0 && foundSuffix == false; j-- {
-			song, err := selectSuffix(chain, list[j].Title)
-			if err == nil {
-				// do not add the song if it's already in the list.
-				isDupe := false
-				for _, s := range list {
-					// this is considered a match
-					if s.Title == song.Title && s.Artist == song.Artist {
-						isDupe = true
-						break
+			attempts := 0
+			for attempts < maxAttempts {
+				song, err := selectSuffix(chain, list[j].Title)
+				if err == nil {
+					// do not add the song if it's already in the list.
+					isDupe := false
+					for _, s := range list {
+						// this is considered a match
+						if s.Title == song.Title && s.Artist == song.Artist {
+							isDupe = true
+							break
+						}
 					}
-				}
-				if !isDupe {
-					list = append(list, song)
+					// if there are maxBySameArtist songs previously added by the same artist,
+					// don't add this one.
+					isRepeatArtist := false
+					if len(list) > 1 && !isDupe {
+						// start at the end
+						checked := 0
+						repeats := 0
+						for checked < maxBySameArtist {
+							if list[i-checked].Artist == song.Artist {
+								repeats++
+								if repeats >= maxBySameArtist {
+									isRepeatArtist = true
+									break
+								}
+							}
+							checked++
+						}
+					}
+					if !isDupe && !isRepeatArtist {
+						list = append(list, song)
+						foundSuffix = true
+						break
+					} else {
+						attempts++
+					}
 				} else {
-					attempts++
+					return list, err
 				}
-				foundSuffix = true
-			} else {
-				return list, err
 			}
 		}
-		if attempts == maxAttempts || !foundSuffix {
+		if !foundSuffix {
 			genError = errors.New("An error occurred in generating your playlist. Please try again.")
 			break
 		}

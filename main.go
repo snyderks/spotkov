@@ -135,7 +135,7 @@ func main() {
 	if args.playlistLength > 0 {
 		length = args.playlistLength
 	}
-	list, err := markov.GenerateSongList(length, lastFm.Song{Artist: args.artist, Title: args.song}, chain)
+	list, err := markov.GenerateSongList(length, 1, lastFm.Song{Artist: args.artist, Title: args.song}, chain)
 	createPlaylist := true
 	if err != nil {
 		reader := bufio.NewReader(os.Stdin)
