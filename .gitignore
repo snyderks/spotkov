@@ -3,6 +3,7 @@ config.json
 
 # Caches #
 cached-songs
+*.gob
 
 # Executables #
 *.exe
