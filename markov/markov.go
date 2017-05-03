@@ -4,7 +4,6 @@ package markov
 
 import (
 	"errors"
-	"fmt"
 	"math/rand"
 	"sort"
 	"strings"
@@ -189,12 +188,10 @@ func selectSuffix(chain map[string]Suffixes, prefix string) (lastFm.Song, error)
 			suffix := suffixes[searchCDF(cdf)]
 			name := suffix.Name
 			artist := suffix.Artist
-			fmt.Println("I chose to add", name)
 			song = lastFm.Song{Artist: artist, Title: name}
 		} else { // there's only one choice.
 			name := chain[prefix].Suffixes[0].Name
 			artist := chain[prefix].Suffixes[0].Artist
-			fmt.Println("Only one choice. I chose to add", name)
 			song = lastFm.Song{Artist: artist, Title: name}
 		}
 		return song, nil
