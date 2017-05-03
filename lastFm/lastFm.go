@@ -145,7 +145,7 @@ func ReadLastFMSongs(user_id string) ([]Song, error) {
 	}
 
 	if errLastFM.Error != 0 {
-		return nil, errors.New("An error has occurred. Please try again later.")
+		return nil, errors.New("Generating the playlist failed. Please try again with the same or a different song.")
 	}
 
 	err = cacheSongs(user_id, songFile{titlesConcat})
@@ -154,7 +154,7 @@ func ReadLastFMSongs(user_id string) ([]Song, error) {
 	}
 
 	if len(titlesConcat) == 0 {
-		err = errors.New("Failed to retrieve any play history. Did you type your username correctly?")
+		err = errors.New("Failed to retrieve any play history. Please try again.")
 	}
 
 	return titlesConcat, err

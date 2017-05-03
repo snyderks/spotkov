@@ -2,6 +2,7 @@ package spotifyPlaylistGenerator
 
 import (
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -32,8 +33,8 @@ type songAndArtist struct {
 	Artist string
 }
 
-func CreatePlaylist(songs []lastFm.Song, client *spotify.Client, userId string) {
-	playlistsPage, err := client.GetPlaylistsForUser(userId)
+func CreatePlaylist(songs []lastFm.Song, client *spotify.Client, userID string) error {
+	playlistsPage, err := client.GetPlaylistsForUser(userID)
 	playlistExists := false
 	var playlistId spotify.ID
 	if err == nil {
@@ -46,15 +47,16 @@ func CreatePlaylist(songs []lastFm.Song, client *spotify.Client, userId string) 
 			}
 		}
 		if playlistExists == false {
-			playlistCreated, err := client.CreatePlaylistForUser(userId, playlistName, false)
+			playlistCreated, err := client.CreatePlaylistForUser(userID, playlistName, false)
 			if err != nil {
 				panic(err)
 			}
 			playlistId = playlistCreated.SimplePlaylist.ID
 		}
 	} else {
-		fmt.Println("Couldn't retrieve the playlists for", userId, "- playlist has not been saved")
-		return
+		s := fmt.Sprint("Couldn't retrieve the playlists for", userID, ".")
+		fmt.Println(s)
+		return errors.New(s)
 	}
 	// retrieve tracklist async
 	tracks := make([]spotify.ID, len(songs))
@@ -63,15 +65,20 @@ func CreatePlaylist(songs []lastFm.Song, client *spotify.Client, userId string) 
 		go searchAndAddTrackToList(client, song.Title, song.Artist, tracks, i)
 	}
 	songsWg.Wait()
+
 	tracks = clearFailuresFromList(tracks)
+	// can do this in one pass
 	if len(tracks) <= maxSongLength {
-		err := client.ReplacePlaylistTracks(userId, playlistId, tracks...)
+		// rewrite the playlist that Spotkov writes to
+		err := client.ReplacePlaylistTracks(userID, playlistId, tracks...)
 		if err != nil {
-			fmt.Println("Couldn't clear and update the playlist. No changes have been made.")
-			panic(err)
+			s := fmt.Sprint("Couldn't clear and update the playlist. No changes have been made to" + playlistName)
+			fmt.Println(s)
+			return errors.New(s)
 		}
 		fmt.Println("Successfully created the playlist under the name", playlistName)
 	} else {
+		// split the playlist into chunks of length maxSongLength.
 		chunks := len(tracks)/maxSongLength + 1
 		trackChunks := make([][]spotify.ID, 0)
 		for i := 0; i < chunks; i++ {
@@ -85,24 +92,27 @@ func CreatePlaylist(songs []lastFm.Song, client *spotify.Client, userId string) 
 			attempts := 0
 			maxAttempts := 100
 			if i == 0 {
-				err := client.ReplacePlaylistTracks(userId, playlistId, trackChunk...)
+				err := client.ReplacePlaylistTracks(userID, playlistId, trackChunk...)
 				for err != nil {
 					if attempts >= maxAttempts {
-						fmt.Println("Couldn't clear and update the playlist. No changes have been made.")
-						break
+						s := fmt.Sprint("Couldn't clear and update the playlist. No changes have been made.")
+						fmt.Println(s)
+						return errors.New(s)
 					}
 					time.Sleep(500 * time.Millisecond)
-					err = client.ReplacePlaylistTracks(userId, playlistId, trackChunk...)
+					err = client.ReplacePlaylistTracks(userID, playlistId, trackChunk...)
 					attempts += 1
 				}
 			} else {
-				_, err := client.AddTracksToPlaylist(userId, playlistId, trackChunk...)
+				_, err := client.AddTracksToPlaylist(userID, playlistId, trackChunk...)
 				for err != nil {
 					if attempts >= maxAttempts {
-						fmt.Println("Adding some tracks failed. The playlist contains at least 50 tracks.")
+						s := fmt.Sprint("Adding some tracks failed. The playlist contains at least" + string(maxSongLength) + "tracks.")
+						fmt.Println(s)
+						return errors.New(s)
 					}
 					time.Sleep(500 * time.Millisecond)
-					_, err = client.AddTracksToPlaylist(userId, playlistId, trackChunk...)
+					_, err = client.AddTracksToPlaylist(userID, playlistId, trackChunk...)
 					attempts += 1
 				}
 			}
@@ -111,10 +121,10 @@ func CreatePlaylist(songs []lastFm.Song, client *spotify.Client, userId string) 
 		// save back the known songs
 		cacheSongIDs(IDs.M)
 	}
-
+	return nil
 }
 
-func searchAndAddTrackToList(client *spotify.Client, title string, artist string, tracks []spotify.ID, index int) {
+func searchAndAddTrackToList(client *spotify.Client, title string, artist string, tracks []spotify.ID, index int) error {
 	defer songsWg.Done()
 
 	// check if there's already a known ID for this song
@@ -131,11 +141,16 @@ func searchAndAddTrackToList(client *spotify.Client, title string, artist string
 		options := spotify.Options{Limit: &limit}
 		query := "track:" + title + " artist:" + artist
 		results, err := client.SearchOpt(query, spotify.SearchTypeTrack, &options)
-		// keep retrying until there's a response
-		for err != nil {
+		// keep retrying until there's a response (10 retries max)
+		i := 0
+		for err != nil && i < 10 {
 			fmt.Println("Failed on searching for track:" + title)
 			time.Sleep(250 * time.Millisecond)
 			results, err = client.SearchOpt(query, spotify.SearchTypeTrack, &options)
+			i++
+		}
+		if i >= 10 {
+			return errors.New("Failed to find track:" + title + "by" + artist)
 		}
 		resultTracks := results.Tracks.Tracks
 		if len(resultTracks) > 0 {
@@ -148,13 +163,15 @@ func searchAndAddTrackToList(client *spotify.Client, title string, artist string
 			IDs.Unlock()
 		}
 	}
+	return nil
 }
 
 func clearFailuresFromList(list []spotify.ID) []spotify.ID {
 	newList := make([]spotify.ID, 0, len(list))
-	for _, id := range list {
-		if id != "" {
-			newList = append(newList, id)
+	// any blank IDs are removed.
+	for _, ID := range list {
+		if ID != "" {
+			newList = append(newList, ID)
 		}
 	}
 	return newList

@@ -12,7 +12,7 @@ import (
 	"unicode"
 
 	"github.com/snyderks/spotkov/lastFm"
-	"github.com/snyderks/spotkov/utils"
+	"github.com/snyderks/spotkov/tools"
 )
 
 // Suffixes holds all suffixes for a specific song
@@ -157,8 +157,8 @@ func selectSuffix(chain map[string]Suffixes, prefix string) (lastFm.Song, error)
 	}, strings.ToLower(prefix))
 	exists := false
 	for key := range chain {
-		fmtPrefix := utils.LowerAndStripPunct(prefix)
-		fmtKey := utils.LowerAndStripPunct(key)
+		fmtPrefix := tools.LowerAndStripPunct(prefix)
+		fmtKey := tools.LowerAndStripPunct(key)
 		if fmtKey == fmtPrefix || strings.HasPrefix(fmtKey, fmtPrefix) {
 			exists = true
 			// It might be slightly different in the chain. This will allow it to continue if it is.

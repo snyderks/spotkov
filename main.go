@@ -163,8 +163,6 @@ func main() {
 	}
 }
 
-// internal startup functions
-
 func completeAuth(w http.ResponseWriter, r *http.Request) {
 	tok, err := auth.Token(state, r)
 	if err != nil {
