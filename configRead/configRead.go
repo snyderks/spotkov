@@ -19,12 +19,13 @@ type Config struct {
 	HTTPPort        string `json:"http-port"`
 	Hostname        string `json:"hostname,omitempty"`
 	AuthRedirectURL string `json:"auth-redirect-url"`
+	Debug           bool   `json:"debug"`
 }
 
-// ReadConfig takes a path to a JSON file.
+// Read takes a path to a JSON file.
 // If it fails to read the file, it falls back to environment variables.
 // Returns an error if it can't parse the JSON file or if it can't read environment variables.
-func ReadConfig(path string) (Config, error) {
+func Read(path string) (Config, error) {
 	file, err := ioutil.ReadFile(path)
 	if err != nil { // not using json config. Try to get it from env vars
 		config := Config{
@@ -35,15 +36,15 @@ func ReadConfig(path string) (Config, error) {
 			HTTPPort:        os.Getenv("PORT"),
 			Hostname:        os.Getenv("HOSTNAME"),
 			AuthRedirectURL: os.Getenv("AUTH_REDIRECT"),
+			Debug:           os.Getenv("DEBUG") == "1",
 		}
 		if !strings.Contains(config.HTTPPort, ":") {
 			config.HTTPPort = ":" + config.HTTPPort
 		}
 		if len(config.AuthRedirectURL) == 0 {
 			return Config{}, errors.New("Couldn't read environment variables")
-		} else {
-			return config, nil
 		}
+		return config, nil
 	}
 	config := Config{}
 	err = json.Unmarshal(file, &config)

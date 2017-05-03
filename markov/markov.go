@@ -8,8 +8,7 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode"
-
+	
 	"github.com/snyderks/spotkov/lastFm"
 	"github.com/snyderks/spotkov/tools"
 )
@@ -148,16 +147,10 @@ func GenerateSongList(length int, maxBySameArtist int, startingSong lastFm.Song,
 }
 
 func selectSuffix(chain map[string]Suffixes, prefix string) (lastFm.Song, error) {
-	prefix = strings.Map(func(r rune) rune {
-		if unicode.IsPunct(r) == true {
-			return -1
-		}
-		return r
-	}, strings.ToLower(prefix))
 	exists := false
 	for key := range chain {
-		fmtPrefix := tools.LowerAndStripPunct(prefix)
-		fmtKey := tools.LowerAndStripPunct(key)
+		fmtPrefix := tools.LowerAndStripNonAlphaNumeric(prefix)
+		fmtKey := tools.LowerAndStripNonAlphaNumeric(key)
 		if fmtKey == fmtPrefix || strings.HasPrefix(fmtKey, fmtPrefix) {
 			exists = true
 			// It might be slightly different in the chain. This will allow it to continue if it is.

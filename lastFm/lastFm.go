@@ -176,7 +176,7 @@ func getAllTitles(titles []Song, startTime time.Time, user_id string) (newTitles
 	api_key, key_success := os.LookupEnv("LASTFM_KEY")
 	get_json := true
 	if key_success == false {
-		config, err := configRead.ReadConfig("config.json")
+		config, err := configRead.Read("config.json")
 		if err != nil {
 			panic("Couldn't read config or get env vars")
 		} else {

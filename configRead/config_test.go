@@ -4,11 +4,11 @@ import "testing"
 
 const path = "testConfig.json"
 const failPath = "failConfig.json"
-const incorrectJsonPath = "badConfig.json"
+const incorrectJSONPath = "badConfig.json"
 
 // TestReadConfig attempts to read a valid configuration.
 func TestReadConfig(t *testing.T) {
-	config, err := ReadConfig(path)
+	config, err := Read(path)
 	if err != nil {
 		t.Errorf("ReadConfig returned an error: %s", err)
 	}
@@ -37,7 +37,7 @@ func TestReadConfig(t *testing.T) {
 
 // TestFailOpenConfig tests correct failure if the path to a config file is invalid.
 func TestFailOpenConfig(t *testing.T) {
-	_, err := ReadConfig(failPath)
+	_, err := Read(failPath)
 	if err == nil {
 		t.Error("No error was returned")
 	}
@@ -46,7 +46,7 @@ func TestFailOpenConfig(t *testing.T) {
 
 // TestFailParseConfig tests correct failure if the config file could not be parsed.
 func TestFailParseConfig(t *testing.T) {
-	_, err := ReadConfig(incorrectJsonPath)
+	_, err := Read(incorrectJSONPath)
 	if err == nil {
 		t.Error("No error was returned")
 	}

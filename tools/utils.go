@@ -8,12 +8,16 @@ import (
 	"unicode"
 )
 
-// LowerAndStripPunct strips any Unicode-defined punctuation from
-// an input string and then sets all alpha characters to their
-// lowercase form.
-func LowerAndStripPunct(s string) string {
+// LowerAndStripNonAlphaNumeric strips any Unicode-defined characters that
+// are not letters from an input string and then sets all
+// alpha characters to their lowercase form.
+// It also replaces hyphens with spaces. This is search-specific, so that
+// portions of a hyphenated word do not get stuck together.
+func LowerAndStripNonAlphaNumeric(s string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.IsPunct(r) {
+		if r == '-' {
+			return ' '
+		} else if !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsSpace(r) {
 			return -1
 		}
 		return r
