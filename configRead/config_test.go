@@ -35,15 +35,6 @@ func TestReadConfig(t *testing.T) {
 	}
 }
 
-// TestFailOpenConfig tests correct failure if the path to a config file is invalid.
-func TestFailOpenConfig(t *testing.T) {
-	_, err := Read(failPath)
-	if err == nil {
-		t.Error("No error was returned")
-	}
-
-}
-
 // TestFailParseConfig tests correct failure if the config file could not be parsed.
 func TestFailParseConfig(t *testing.T) {
 	_, err := Read(incorrectJSONPath)
