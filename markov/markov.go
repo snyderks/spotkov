@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 	"time"
-	
+
 	"github.com/snyderks/spotkov/lastFm"
 	"github.com/snyderks/spotkov/tools"
 )
@@ -175,7 +175,7 @@ func selectSuffix(chain map[string]Suffixes, prefix string) (lastFm.Song, error)
 
 			// Creating the cdf here
 			for j := 1; j < len(cdf); j++ {
-				cdf[j][0] = cdf[j-1][0]
+				cdf[j][0] = cdf[j-1][0] + cdf[j][0]
 			}
 			// Now to do the search
 			suffix := suffixes[searchCDF(cdf)]
@@ -207,39 +207,73 @@ func (cdf CDF) Swap(i, j int) {
 	cdf[j] = temp
 }
 
-// Binary search
+// searchCDF takes a continuous distribution function and returns a random
+// point from that function.
+// Here, it is used to generate an array index that points to the next song to pick,
+// weighted by how likely it is that the next song is listened to.
+//
+// A CDF is defined as a two-dimensional array, with two columns and as many rows
+// as there are options (y values) to pick from.
+// The x values (first column) are weighted, with each being the previous row's
+// x value plus the weight (minimum of 1).
+// All elements are sorted ascending based on their x values.
+// The y values can be anything desired. Their value is irrelevant.
+//
+// Behavior:
+// Any number between the current x value and the next one falls to the lower x value.
+// This can also be defined as [Low, High) -> Low.
+// The domain of the CDF is defined as [1, CDF[-1][0]]. (CDF[-1] is the last element of the array)
 func searchCDF(cdf CDF) int {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	num := r.Intn(len(cdf)-1) + 1 // Doing the -1 and +1 because Intn can return 0, which isn't valid
-	// Binary search!
+	// Doing the -1 and +1 because Intn can return 0, which isn't valid. This shifts everything right one.
+	// Picking a random number in the array
+	num := r.Intn(cdf[len(cdf)-1][0]) + 1
+
+	// Binary search! Look for the number generated.
 	right := len(cdf) - 1
 	left := 0
 	done := false
 	index := -1
+
 	for done == false {
+		// pick the middle
 		m := (left + right) / 2
 		am := cdf[m][0]
+		// found the correct number. Not index, but number.
 		if am == num {
 			index = m
 			done = true
 		} else if am < num {
-			if m == 0 || m == len(cdf)-1 {
+			// need to move to right half
+			if m == len(cdf)-1 {
+				// can't move right, so return current index.
 				index = m
 				done = true
 			} else if cdf[m+1][0] > num {
-				index = m + 1
+				// select current index if
+				// next value is more than desired number.
+				// current index then satisfies
+				// [Low, High).
+				index = m
 				done = true
 			} else {
+				// bring left bound to the right half
 				left = m + 1
 			}
 		} else {
-			if m == 0 || m == len(cdf)-1 {
+			// need to move to left half
+			if m == 0 {
+				// can't move left, return current index
 				index = m
 				done = true
-			} else if cdf[m-1][0] < num {
-				index = m
+			} else if cdf[m-1][0] <= num {
+				// previous element is less than or equal to desired
+				// number, satisfying [Low, High).
+				// The low is selected.
+				index = m - 1
 				done = true
 			} else {
+				// bring right bound to the left half
 				right = m - 1
 			}
 		}
