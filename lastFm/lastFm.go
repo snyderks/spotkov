@@ -73,9 +73,20 @@ type Song struct {
 	Timestamp time.Time
 }
 
+// BaseSong has an artist name and the title of the song.
+type BaseSong struct {
+	Artist string
+	Title  string
+}
+
 // songFile contains a list of Songs.
 type songFile struct {
 	Songs []Song
+}
+
+// SongMap wraps a map of songs for easy serialization.
+type SongMap struct {
+	Songs map[BaseSong]bool
 }
 
 // lastFMError contains the format of an error received if something
@@ -85,10 +96,8 @@ type lastFMError struct {
 	Message string `json:"message"`
 }
 
-// readCachedSongs reads any existing song data about a user and
-// stores that data into the songs argument.
-func readCachedSongs(userID string, songs interface{}) error {
-	file, err := os.Open("./cached-songs/" + userID + ".gob")
+func readCache(pathname string, songs interface{}) error {
+	file, err := os.Open(pathname)
 	if err == nil {
 		decoder := gob.NewDecoder(file)
 		err = decoder.Decode(songs)
@@ -97,13 +106,10 @@ func readCachedSongs(userID string, songs interface{}) error {
 	return err
 }
 
-// cacheSongs takes song data and stores it in a binary data format
-// used by golang called a gob.
-func cacheSongs(userID string, songs songFile) error {
-	file, err := os.Create("./cached-songs/" + userID + ".gob")
+func writeCache(pathname string, folderpath string, songs interface{}) error {
+	file, err := os.Create(pathname)
 	if err != nil {
-		fmt.Println(err.Error())
-		_ = os.Mkdir("./cached-songs", 0666)
+		_ = os.Mkdir(folderpath, 0666)
 		err = nil
 	}
 	if err == nil {
@@ -114,6 +120,28 @@ func cacheSongs(userID string, songs songFile) error {
 	return err
 }
 
+// ReadCachedUniqueSongs reads back a cache of mapped songs from the local directory.
+func ReadCachedUniqueSongs(userID string, songs *SongMap) error {
+	return readCache("./cached-unique-songs/"+userID+".gob", &songs)
+}
+
+// readCachedSongs reads any existing song data about a user and
+// stores that data into the songs argument.
+func readCachedSongs(userID string, songs *songFile) error {
+	return readCache("./cached-songs/"+userID+".gob", &songs)
+}
+
+// cacheSongs takes song data and stores it in a binary data format
+// used by golang called a gob.
+func cacheSongs(userID string, songs songFile) error {
+	return writeCache("./cached-songs/"+userID+".gob", "./cached-songs", songs)
+}
+
+// cacheUniqueSongs saves a map of songs to the local directory.
+func cacheUniqueSongs(userID string, songs SongMap) error {
+	return writeCache("./cached-unique-songs/"+userID+".gob", "./cached-unique-songs", &songs)
+}
+
 // pagesWg manages the number of pages currently being searched for.
 var pagesWg sync.WaitGroup
 
@@ -122,9 +150,16 @@ const baseLastURI = "http://ws.audioscrobbler.com/2.0/"
 
 // ReadLastFMSongs retrieves all scrobbled Last.FM songs for a specific user.
 // Returns an error on failure.
-func ReadLastFMSongs(user_id string) ([]Song, error) {
+func ReadLastFMSongs(userID string) ([]Song, error) {
+	var uniques SongMap
+	err := ReadCachedUniqueSongs(userID, &uniques)
+
+	if err != nil {
+		uniques.Songs = make(map[BaseSong]bool)
+	}
+
 	file := songFile{}
-	err := readCachedSongs(user_id, &file)
+	err = readCachedSongs(userID, &file)
 	titlesConcat := file.Songs
 	if len(titlesConcat) == 0 {
 		err = errors.New("Length of cached songs is 0. Regenerating...")
@@ -133,7 +168,7 @@ func ReadLastFMSongs(user_id string) ([]Song, error) {
 	var errLastFM lastFMError
 
 	if err != nil { // couldn't retrieve a cached version
-		titlesConcat, errLastFM = getAllTitles(make([]Song, 0), time.Time{}, user_id)
+		titlesConcat, errLastFM = getAllTitles(make([]Song, 0), &uniques, time.Time{}, userID)
 	} else {
 		var lastDate time.Time
 		for _, song := range titlesConcat {
@@ -142,16 +177,21 @@ func ReadLastFMSongs(user_id string) ([]Song, error) {
 				break
 			}
 		}
-		titlesConcat, errLastFM = getAllTitles(titlesConcat, lastDate, user_id)
+		titlesConcat, errLastFM = getAllTitles(titlesConcat, &uniques, lastDate, userID)
 	}
 
 	if errLastFM.Error != 0 {
 		return nil, errors.New("Generating the playlist failed. Please try again with the same or a different song.")
 	}
 
-	err = cacheSongs(user_id, songFile{titlesConcat})
+	err = cacheSongs(userID, songFile{titlesConcat})
 	if err != nil {
-		fmt.Println("Couldn't cache the songs:", err)
+		fmt.Println("Couldn't cache the songs:", err.Error())
+	}
+
+	err = cacheUniqueSongs(userID, uniques)
+	if err != nil {
+		fmt.Println("Couldn't cache unique songs:", err.Error())
 	}
 
 	if len(titlesConcat) == 0 {
@@ -164,7 +204,7 @@ func ReadLastFMSongs(user_id string) ([]Song, error) {
 
 // getAllTitles takes a list of songs and returns the songs for the user scrobbled after a certain time.
 // Returns an error if something goes wrong.
-func getAllTitles(titles []Song, startTime time.Time, user_id string) (newTitles []Song, errLastFM lastFMError) {
+func getAllTitles(titles []Song, uniques *SongMap, startTime time.Time, user_id string) (newTitles []Song, errLastFM lastFMError) {
 	defer func() {
 		if r := recover(); r != nil {
 			errLastFM.Error = r.(int)
@@ -294,11 +334,23 @@ func getAllTitles(titles []Song, startTime time.Time, user_id string) (newTitles
 		// normal append for a new list
 		for i := 0; i < max_page; i++ {
 			titles = append(songPages[i], titles...)
+			for _, el := range songPages[i] {
+				s := BaseSong{el.Title, el.Artist}
+				if !uniques.Songs[s] {
+					uniques.Songs[s] = true
+				}
+			}
 		}
 	} else {
 		// if we're adding to the cache, have to prepend the new songs
 		for i := 0; i < max_page; i++ {
 			titles = append(titles, songPages[i]...)
+			for _, el := range songPages[i] {
+				s := BaseSong{el.Title, el.Artist}
+				if !uniques.Songs[s] {
+					uniques.Songs[s] = true
+				}
+			}
 		}
 	}
 
