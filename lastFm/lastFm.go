@@ -117,6 +117,8 @@ func writeCache(pathname string, folderpath string, songs interface{}) error {
 	if err == nil {
 		encoder := gob.NewEncoder(file)
 		encoder.Encode(songs)
+	} else {
+		fmt.Println("Couldn't create the file:", err.Error())
 	}
 	file.Close()
 	return err
@@ -141,7 +143,7 @@ func cacheSongs(userID string, songs songFile) error {
 
 // cacheUniqueSongs saves a map of songs to the local directory.
 func cacheUniqueSongs(userID string, songs SongMap) error {
-	return writeCache("./cached-unique-songs/"+userID+".gob", "./cached-unique-songs", &songs)
+	return writeCache("./cached-unique-songs/"+userID+".gob", "./cached-unique-songs", songs)
 }
 
 // pagesWg manages the number of pages currently being searched for.
