@@ -108,9 +108,11 @@ func readCache(pathname string, songs interface{}) error {
 
 func writeCache(pathname string, folderpath string, songs interface{}) error {
 	file, err := os.Create(pathname)
+	// errors usually are that the folder doesn't exist yet.
 	if err != nil {
 		_ = os.Mkdir(folderpath, 0666)
-		err = nil
+		// try one more time
+		file, err = os.Create(pathname)
 	}
 	if err == nil {
 		encoder := gob.NewEncoder(file)
@@ -335,7 +337,7 @@ func getAllTitles(titles []Song, uniques *SongMap, startTime time.Time, user_id 
 		for i := 0; i < max_page; i++ {
 			titles = append(songPages[i], titles...)
 			for _, el := range songPages[i] {
-				s := BaseSong{el.Title, el.Artist}
+				s := BaseSong{Artist: el.Artist, Title: el.Title}
 				if !uniques.Songs[s] {
 					uniques.Songs[s] = true
 				}
@@ -346,7 +348,7 @@ func getAllTitles(titles []Song, uniques *SongMap, startTime time.Time, user_id 
 		for i := 0; i < max_page; i++ {
 			titles = append(titles, songPages[i]...)
 			for _, el := range songPages[i] {
-				s := BaseSong{el.Title, el.Artist}
+				s := BaseSong{Artist: el.Artist, Title: el.Title}
 				if !uniques.Songs[s] {
 					uniques.Songs[s] = true
 				}
