@@ -98,22 +98,24 @@ type lastFMError struct {
 }
 
 // Redis key prefixes for reading and writing song data.
-var allSongCachePrefix string
-var uniqueCachePrefix string
+const allSongCachePrefix = "songCache."
+const uniqueCachePrefix = "uniqueCache."
 
 var UseRedis bool
 var c *redis.Client
 
 func init() {
 	UseRedis = true
-	var err error
-	c, err = redis.Dial("tcp", "localhost:6379")
+	config, err := configRead.Read("config.json")
+	rURL := "localhost:6379"
+	if err == nil {
+		rURL = config.RedisURL
+	}
+	c, err = redis.Dial("tcp", rURL)
 	if err != nil {
 		UseRedis = false
 		fmt.Println(err.Error())
 	}
-	allSongCachePrefix = "songCache."
-	uniqueCachePrefix = "uniqueSongCache."
 }
 
 func ReadCache(userID string, cachePrefix string, songs interface{}) error {

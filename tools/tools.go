@@ -47,12 +47,19 @@ func ToBase64(s interface{}) (string, error) {
 	// Now do the same with base64, using the gob encoding as input
 	b64 := new(bytes.Buffer)
 	e := base64.NewEncoder(base64.StdEncoding, b64)
-	defer e.Close()
 	_, err = e.Write(buf.Bytes())
 
 	if err != nil {
 		return "",
 			errors.New("Couldn't encode the interface as a base64 string: " +
+				err.Error())
+	}
+
+	err = e.Close()
+
+	if err != nil {
+		return "",
+			errors.New("Couldn't close the reader: " +
 				err.Error())
 	}
 
