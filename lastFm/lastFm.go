@@ -8,10 +8,14 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"net"
 
 	"github.com/mediocregopher/radix.v2/redis"
 	"github.com/snyderks/spotkov/configRead"
@@ -111,10 +115,47 @@ func init() {
 	if err == nil {
 		rURL = config.RedisURL
 	}
+
+	// Need to construct a URL if it's not using localhost
+	if !strings.Contains(rURL, "localhost") {
+		fmt.Println("Constructing URL")
+		parsedURL, err := url.Parse(rURL)
+		if err != nil {
+			UseRedis = false
+			fmt.Println(err.Error())
+			return
+		}
+		host, port, _ := net.SplitHostPort(parsedURL.Host)
+		hasUser := false
+		hasPass := false
+		pass := ""
+		user := ""
+		if parsedURL.User != nil {
+			pass, hasPass = parsedURL.User.Password()
+			user = parsedURL.User.Username()
+			hasUser = true
+		}
+		// the constructed URL after parsing
+		// in the format of:
+		// scheme://[user:pass@host]:port/path
+		rURL = parsedURL.Scheme + "://["
+		if hasUser {
+			rURL += user
+		}
+		if hasPass {
+			rURL += (":" + pass)
+		}
+		if hasUser {
+			rURL += "@"
+		}
+		rURL += (host + "]" + port + parsedURL.EscapedPath())
+	}
+	fmt.Println(rURL)
 	c, err = redis.Dial("tcp", rURL)
 	if err != nil {
 		UseRedis = false
 		fmt.Println(err.Error())
+		fmt.Println(rURL)
 	}
 }
 
