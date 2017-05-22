@@ -20,6 +20,7 @@ type Config struct {
 	Hostname        string `json:"hostname,omitempty"`
 	AuthRedirectURL string `json:"auth-redirect-url"`
 	Debug           bool   `json:"debug"`
+	RedisURL        string `json:"redis-url"`
 }
 
 // Read takes a path to a JSON file.
@@ -37,6 +38,7 @@ func Read(path string) (Config, error) {
 			Hostname:        os.Getenv("HOSTNAME"),
 			AuthRedirectURL: os.Getenv("AUTH_REDIRECT"),
 			Debug:           os.Getenv("DEBUG") == "1",
+			RedisURL:        os.Getenv("REDIS_URL"),
 		}
 		if !strings.Contains(config.HTTPPort, ":") {
 			config.HTTPPort = ":" + config.HTTPPort

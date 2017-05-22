@@ -3,3 +3,6 @@ language: go
 install:
   - go get github.com/zmb3/spotify
   - go get github.com/atotto/clipboard
+  - go get github.com/mediocregopher/radix.v2/redis
+
+services: redis-server

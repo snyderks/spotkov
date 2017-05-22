@@ -6,5 +6,6 @@
   "http-port" : ":80",
   "hostname" : "siteysite.site",
   "auth-redirect-url" : "siteysite.site/callback",
-  "debug": false
+  "debug": false,
+  "redis-url": "localhost:6379"
 }

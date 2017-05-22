@@ -1,9 +1,6 @@
 package lastFm
 
-import (
-	"os"
-	"testing"
-)
+import "testing"
 
 func TestSongMapCaching(t *testing.T) {
 	// create a very basic test object
@@ -15,10 +12,8 @@ func TestSongMapCaching(t *testing.T) {
 	err := cacheUniqueSongs("test", s)
 	if err != nil {
 		t.Error(err.Error())
+		t.Error("Do you have a Redis test server running?")
 	}
-
-	// clean up after oneself
-	os.RemoveAll("./cached-unique-songs")
 }
 
 func TestSongMapReading(t *testing.T) {
@@ -31,6 +26,8 @@ func TestSongMapReading(t *testing.T) {
 	err := cacheUniqueSongs("test", s)
 	if err != nil {
 		t.Error(err.Error())
+		t.Error("Do you have a Redis test server running?")
+		return
 	}
 
 	// see if we can read it back
@@ -43,7 +40,4 @@ func TestSongMapReading(t *testing.T) {
 	if !ok {
 		t.Error("The returned cache didn't contain the correct item.")
 	}
-
-	// clean up after oneself
-	os.RemoveAll("./cached-unique-songs")
 }
