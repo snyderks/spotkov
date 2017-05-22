@@ -15,9 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"net"
-
-	"github.com/mediocregopher/radix.v2/redis"
+	"github.com/go-redis/redis"
 	"github.com/snyderks/spotkov/configRead"
 	"github.com/snyderks/spotkov/tools"
 )
@@ -115,54 +113,30 @@ func init() {
 	if err == nil {
 		rURL = config.RedisURL
 	}
+	password := ""
 
 	// Need to construct a URL if it's not using localhost
 	if !strings.Contains(rURL, "localhost") {
-		fmt.Println("Constructing URL")
-		parsedURL, err := url.Parse(rURL)
-		if err != nil {
-			UseRedis = false
-			fmt.Println(err.Error())
-			return
-		}
-		host, port, _ := net.SplitHostPort(parsedURL.Host)
-		hasUser := false
-		hasPass := false
-		pass := ""
-		user := ""
-		if parsedURL.User != nil {
-			pass, hasPass = parsedURL.User.Password()
-			user = parsedURL.User.Username()
-			hasUser = true
-		}
-		// the constructed URL after parsing
-		// in the format of:
-		// scheme://[user:pass@host]:port/path
-		rURL = parsedURL.Scheme + "://["
-		if hasUser {
-			rURL += user
-		}
-		if hasPass {
-			rURL += (":" + pass)
-		}
-		if hasUser {
-			rURL += "@"
-		}
-		rURL += (host + "]:" + port + parsedURL.EscapedPath())
+		parsedURL, _ := url.Parse(rURL)
+		password, _ = parsedURL.User.Password()
+		rURL = parsedURL.Host
 	}
-	fmt.Println(rURL)
-	c, err = redis.Dial("tcp", rURL)
+	c = redis.NewClient(&redis.Options{
+		Addr:     rURL,
+		Password: password,
+		DB:       0, // use default DB
+	})
+	_, err = c.Ping().Result()
 	if err != nil {
 		UseRedis = false
 		fmt.Println(err.Error())
-		fmt.Println(rURL)
 	}
 }
 
 func ReadCache(userID string, cachePrefix string, songs interface{}) error {
 	if UseRedis {
 		// Send the command to retrieve the cache to Redis.
-		s, err := c.Cmd("GET", cachePrefix+userID).Str()
+		s, err := c.Get(cachePrefix + userID).Result()
 		if err != nil {
 			return errors.New(fmt.Sprintf("Error occurred in Redis request: %s", err.Error()))
 		}
@@ -185,7 +159,7 @@ func WriteCache(userID string, cachePrefix string, songs interface{}) error {
 		if err != nil {
 			return errors.New(fmt.Sprintf("Error encoding the SongMap: %s", err.Error()))
 		}
-		err = c.Cmd("SET", cachePrefix+userID, b64).Err
+		err = c.Set(cachePrefix+userID, b64, 0).Err()
 		if err != nil {
 			return errors.New(fmt.Sprintf("Error sending the SET request to Redis: %s", err.Error()))
 		}
