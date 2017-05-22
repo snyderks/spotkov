@@ -2,7 +2,6 @@
 package lastFm
 
 import (
-	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,7 +13,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mediocregopher/radix.v2/redis"
 	"github.com/snyderks/spotkov/configRead"
+	"github.com/snyderks/spotkov/tools"
 )
 
 // SongsPage holds a list of tracks in a page.
@@ -96,54 +97,80 @@ type lastFMError struct {
 	Message string `json:"message"`
 }
 
-func readCache(pathname string, songs interface{}) error {
-	file, err := os.Open(pathname)
-	if err == nil {
-		decoder := gob.NewDecoder(file)
-		err = decoder.Decode(songs)
+// Redis key prefixes for reading and writing song data.
+var allSongCachePrefix string
+var uniqueCachePrefix string
+
+var UseRedis bool
+var c *redis.Client
+
+func init() {
+	UseRedis = true
+	var err error
+	c, err = redis.Dial("tcp", "localhost:6379")
+	if err != nil {
+		UseRedis = false
+		fmt.Println(err.Error())
 	}
-	file.Close()
-	return err
+	allSongCachePrefix = "songCache."
+	uniqueCachePrefix = "uniqueSongCache."
 }
 
-func writeCache(pathname string, folderpath string, songs interface{}) error {
-	file, err := os.Create(pathname)
-	// errors usually are that the folder doesn't exist yet.
-	if err != nil {
-		_ = os.Mkdir(folderpath, 0666)
-		// try one more time
-		file, err = os.Create(pathname)
+func ReadCache(userID string, cachePrefix string, songs interface{}) error {
+	if UseRedis {
+		// Send the command to retrieve the cache to Redis.
+		s, err := c.Cmd("GET", cachePrefix+userID).Str()
+		if err != nil {
+			return errors.New(fmt.Sprintf("Error occurred in Redis request: %s", err.Error()))
+		}
+
+		// Attempt to convert from a base64 representation.
+		err = tools.FromBase64(s, songs)
+		if err != nil {
+			return errors.New(fmt.Sprintf("Couldn't convert Redis response: %s", err.Error()))
+		}
+		return nil
 	}
-	if err == nil {
-		encoder := gob.NewEncoder(file)
-		encoder.Encode(songs)
-	} else {
-		fmt.Println("Couldn't create the file:", err.Error())
+	return errors.New("Attempted to read the cache without a connection to Redis.")
+}
+
+func WriteCache(userID string, cachePrefix string, songs interface{}) error {
+	if UseRedis {
+		// Attempt to convert to a base64 representation.
+		b64, err := tools.ToBase64(songs)
+
+		if err != nil {
+			return errors.New(fmt.Sprintf("Error encoding the SongMap: %s", err.Error()))
+		}
+		err = c.Cmd("SET", cachePrefix+userID, b64).Err
+		if err != nil {
+			return errors.New(fmt.Sprintf("Error sending the SET request to Redis: %s", err.Error()))
+		}
+		return nil
 	}
-	file.Close()
-	return err
+	return errors.New("Attempted to write to cache without a connection to Redis.")
 }
 
 // ReadCachedUniqueSongs reads back a cache of mapped songs from the local directory.
 func ReadCachedUniqueSongs(userID string, songs *SongMap) error {
-	return readCache("./cached-unique-songs/"+userID+".gob", &songs)
+	return ReadCache(userID, uniqueCachePrefix, songs)
 }
 
 // readCachedSongs reads any existing song data about a user and
 // stores that data into the songs argument.
 func readCachedSongs(userID string, songs *songFile) error {
-	return readCache("./cached-songs/"+userID+".gob", &songs)
+	return ReadCache(userID, allSongCachePrefix, songs)
 }
 
 // cacheSongs takes song data and stores it in a binary data format
 // used by golang called a gob.
 func cacheSongs(userID string, songs songFile) error {
-	return writeCache("./cached-songs/"+userID+".gob", "./cached-songs", songs)
+	return WriteCache(userID, allSongCachePrefix, songs)
 }
 
 // cacheUniqueSongs saves a map of songs to the local directory.
 func cacheUniqueSongs(userID string, songs SongMap) error {
-	return writeCache("./cached-unique-songs/"+userID+".gob", "./cached-unique-songs", songs)
+	return WriteCache(userID, uniqueCachePrefix, songs)
 }
 
 // pagesWg manages the number of pages currently being searched for.
