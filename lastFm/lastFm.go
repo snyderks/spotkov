@@ -148,7 +148,7 @@ func init() {
 		if hasUser {
 			rURL += "@"
 		}
-		rURL += (host + "]" + port + parsedURL.EscapedPath())
+		rURL += (host + "]:" + port + parsedURL.EscapedPath())
 	}
 	fmt.Println(rURL)
 	c, err = redis.Dial("tcp", rURL)
