@@ -202,8 +202,11 @@ func ReadLastFMSongs(userID string) ([]Song, error) {
 	var uniques SongMap
 	err := ReadCachedUniqueSongs(userID, &uniques)
 
+	// didn't find or couldn't access the cache.
+	// make a new map instead
 	if err != nil {
 		uniques.Songs = make(map[BaseSong]bool)
+		err = nil
 	}
 
 	file := songFile{}
@@ -235,11 +238,15 @@ func ReadLastFMSongs(userID string) ([]Song, error) {
 	err = cacheSongs(userID, songFile{titlesConcat})
 	if err != nil {
 		fmt.Println("Couldn't cache the songs:", err.Error())
+		// Don't actually want to return an error to the caller. Printing is enough.
+		err = nil
 	}
 
 	err = cacheUniqueSongs(userID, uniques)
 	if err != nil {
 		fmt.Println("Couldn't cache unique songs:", err.Error())
+		// See above. Don't want to return an error.
+		err = nil
 	}
 
 	if len(titlesConcat) == 0 {
